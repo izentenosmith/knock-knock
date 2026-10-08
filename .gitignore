@@ -1,0 +1,33 @@
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+*.kubeconfig
+kubeconfig*
+
+# Node / React (frontend, backends/ts)
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Rust
+target/
+
+# Go
+/backends/go/knock
+
+# Logs
+*.log
