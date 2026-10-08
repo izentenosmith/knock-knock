@@ -15,7 +15,34 @@ watching them behave.
 
 ## Status
 
-🚧 Planning. No level has been built yet. See [PLAN.md](PLAN.md).
+✅ **Level 0 done:** the four backends, the React UI and Docker Compose.
+Levels 1 and up are still to come. See [PLAN.md](PLAN.md).
+
+## Quickstart
+
+```bash
+docker compose up --build
+```
+
+Open [localhost:8080](http://localhost:8080), then knock: on Compose the
+answers rotate go → python → rust → ts, perfectly. In another terminal:
+
+```bash
+scripts/smoke.sh
+```
+
+It fires 40 knocks (`scripts/smoke.sh 100` for more), checks the contract and
+prints the tally. Needs `curl` and `jq`.
+
+Same app, very different images (arm64, `docker images`):
+
+| Image | Runtime base | Disk | Compressed |
+|---|---|---|---|
+| rust | `distroless/static` | 7.8 MB | 1.3 MB |
+| go | `scratch` | 9.3 MB | 2.8 MB |
+| frontend | `nginx:alpine` | 93 MB | 26 MB |
+| python | `python:3.13-slim` | 202 MB | 43 MB |
+| ts | `node:24-alpine` | 237 MB | 62 MB |
 
 ## How it works
 

@@ -153,6 +153,9 @@ Every level is written up in the same four parts:
 `knock-api`. Docker DNS returns all four IPs, and nginx round-robins across the
 addresses a hostname resolves to, so compose shows **perfect rotation**. Write
 that down: it's the baseline that Kubernetes will *not* reproduce at level 3.
+The rotation is perfect only with `worker_processes 1`: each nginx worker keeps
+its own round-robin counter, and with the default `auto` (one worker per CPU)
+the first knocks all land on the same backend.
 
 **01 — pipeline.** GitHub Actions, two workflows:
 - `ci.yml` runs on PRs and pushes. It builds the five images (matrix), runs
