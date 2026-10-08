@@ -1,0 +1,48 @@
+# Level 0: the four backends share the alias knock-api, and only the frontend is published.
+# Docker DNS returns one address per backend for knock-api, and nginx round-robins across them.
+
+x-backend: &backend
+  init: true # a real PID 1 that forwards SIGTERM, so `docker compose down` doesn't wait
+  networks:
+    default:
+      aliases: [knock-api]
+
+x-healthcheck: &healthcheck
+  interval: 2s
+  timeout: 2s
+  retries: 15
+
+services:
+  go:
+    <<: *backend
+    build: { context: backends/go, args: { VERSION: "${VERSION:-dev}" } }
+    healthcheck: { <<: *healthcheck, test: ["CMD", "/knock", "--healthcheck"] }
+
+  python:
+    <<: *backend
+    build: { context: backends/python, args: { VERSION: "${VERSION:-dev}" } }
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz')"]
+
+  rust:
+    <<: *backend
+    build: { context: backends/rust, args: { VERSION: "${VERSION:-dev}" } }
+    healthcheck: { <<: *healthcheck, test: ["CMD", "/knock", "--healthcheck"] }
+
+  ts:
+    <<: *backend
+    build: { context: backends/ts, args: { VERSION: "${VERSION:-dev}" } }
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+
+  frontend:
+    build: frontend
+    ports: ["8080:8080"]
+    # nginx resolves knock-api once, at startup: a backend that isn't up yet would miss the rotation.
+    depends_on:
+      go: { condition: service_healthy }
+      python: { condition: service_healthy }
+      rust: { condition: service_healthy }
+      ts: { condition: service_healthy }
