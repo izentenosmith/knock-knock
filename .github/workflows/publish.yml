@@ -60,21 +60,20 @@ jobs:
       - if: steps.guard.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v4
 
-      # What ships is what was checked: the amd64 image is built and started first, and the
-      # multi-platform build below reuses its layers from the builder's cache.
-      - if: steps.guard.outputs.skip != 'true' && matrix.service != 'frontend'
-        run: |
-          docker buildx build "$CONTEXT" --platform linux/amd64 --build-arg VERSION="$VERSION" --load --tag "check/$SERVICE"
-          scripts/check-image.sh "check/$SERVICE" "$SERVICE" "$VERSION"
-
+      # What ships is what was checked: each backend's amd64 image is built and started first,
+      # then the multi-platform build, with the same arguments, reuses its layers from the cache.
       - if: steps.guard.outputs.skip != 'true'
         env: { PUSH: "${{ inputs.push }}" }
         run: |
+          build=(docker buildx build "$CONTEXT" --build-arg VERSION="$VERSION")
+          if [ "$SERVICE" != frontend ]; then
+            "${build[@]}" --platform linux/amd64 --load --tag "check/$SERVICE"
+            scripts/check-image.sh "check/$SERVICE" "$SERVICE" "$VERSION"
+          fi
           output=()
           [ "$PUSH" = true ] && output=(--push)
-          docker buildx build "$CONTEXT" \
+          "${build[@]}" \
             --platform linux/amd64,linux/arm64 \
-            --build-arg VERSION="$VERSION" \
             --label org.opencontainers.image.source="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --label org.opencontainers.image.revision="$GITHUB_SHA" \
             --label org.opencontainers.image.version="$VERSION" \
