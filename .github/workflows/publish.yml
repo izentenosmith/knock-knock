@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false # one failed service must not cancel the others; a re-run finishes the rest
       matrix:
-        include:
+        include: &images # every published image, and the directory it builds from
           - { service: go, context: backends/go }
           - { service: python, context: backends/python }
           - { service: rust, context: backends/rust }
@@ -88,7 +88,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [go, python, rust, ts, frontend]
+        include: *images
     env:
       IMAGE: ghcr.io/${{ github.repository }}-${{ matrix.service }}
       LEVEL_TAG: ${{ inputs.level_tag }}
