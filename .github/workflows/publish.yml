@@ -48,18 +48,7 @@ jobs:
       - id: guard
         if: inputs.push
         run: |
-          # Digest of an image reference, or nothing if it doesn't exist (a missing tag says "not
-          # found", a package not created yet answers 403). Any other registry error fails the step.
-          lookup() {
-            local out
-            if out=$(docker buildx imagetools inspect "$1" --format '{{json .Manifest}}' 2>&1); then
-              jq -r .digest <<<"$out"
-            elif ! grep -Eqi 'not found|403 Forbidden|denied' <<<"$out"; then
-              echo "::error::can't tell whether $1 exists: $out" >&2
-              return 1
-            fi
-          }
-          existing=$(lookup "$IMAGE:$VERSION")
+          existing=$(scripts/image-digest.sh "$IMAGE:$VERSION")
           if [ -n "$existing" ]; then
             echo "$IMAGE:$VERSION already exists ($existing): skipping" | tee -a "$GITHUB_STEP_SUMMARY"
             echo "skip=true" >>"$GITHUB_OUTPUT"
@@ -87,7 +76,7 @@ jobs:
             --tag "$IMAGE:$VERSION" \
             "${output[@]}"
           if [ "$PUSH" = true ]; then
-            digest=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)
+            digest=$(scripts/image-digest.sh "$IMAGE:$VERSION")
             echo "pushed $IMAGE:$VERSION @ $digest" | tee -a "$GITHUB_STEP_SUMMARY"
           else
             echo "dry run: built $IMAGE:$VERSION for linux/amd64 and linux/arm64, pushed nothing" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -104,27 +93,18 @@ jobs:
       IMAGE: ghcr.io/${{ github.repository }}-${{ matrix.service }}
       LEVEL_TAG: ${{ inputs.level_tag }}
     steps:
+      - uses: actions/checkout@v7
+
       - env: { TOKEN: "${{ github.token }}" }
         run: echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
       - run: |
-          # Digest of an image reference, or nothing if it doesn't exist (a missing tag says "not
-          # found", a package not created yet answers 403). Any other registry error fails the step.
-          lookup() {
-            local out
-            if out=$(docker buildx imagetools inspect "$1" --format '{{json .Manifest}}' 2>&1); then
-              jq -r .digest <<<"$out"
-            elif ! grep -Eqi 'not found|403 Forbidden|denied' <<<"$out"; then
-              echo "::error::can't tell whether $1 exists: $out" >&2
-              return 1
-            fi
-          }
-          src=$(lookup "$IMAGE:$VERSION")
+          src=$(scripts/image-digest.sh "$IMAGE:$VERSION")
           if [ -z "$src" ]; then
             echo "::error::$IMAGE:$VERSION doesn't exist: this commit was never published from main"
             exit 1
           fi
-          dst=$(lookup "$IMAGE:$LEVEL_TAG")
+          dst=$(scripts/image-digest.sh "$IMAGE:$LEVEL_TAG")
           if [ "$dst" = "$src" ]; then
             echo "$IMAGE:$LEVEL_TAG is already $src: no-op" | tee -a "$GITHUB_STEP_SUMMARY"
           elif [ -n "$dst" ]; then
