@@ -105,9 +105,10 @@ feature ──PR──▶ dev ──PR (merge commit)──▶ main ──▶ gh
    platforms built, nothing pushed). Merge it with a **merge commit**.
 3. CI on `main` publishes `ghcr.io/izentenosmith/knock-knock-<svc>:sha-<7>` for
    all five images, for `linux/amd64` and `linux/arm64`.
-4. First publish only: on GitHub, open each of the five packages → *Package
-   settings* → *Change visibility* → **Public**, so anyone (and k3d) can pull
-   without logging in.
+4. The packages come out **public**: published by this public repo's workflow,
+   they take the repo's visibility, so anyone (and k3d) can pull without logging
+   in. If one ever shows up private, switch it once on GitHub: the package →
+   *Package settings* → *Change visibility* → **Public**.
 5. Tag the merge commit and push the tag:
    `git tag -a level-NN-<slug> -m "…" && git push origin level-NN-<slug>`.
    CI gives the same images that tag, with no rebuild.
