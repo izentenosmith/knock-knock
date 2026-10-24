@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fire N knocks at the API, check the contract, print the tally.
-# Usage: scripts/smoke.sh [N]   (URL=... to knock somewhere else)
+# Usage: scripts/smoke.sh [N]   (URL=... to knock somewhere else,
+#                               EXPECT_VERSION=... to require that version in every answer)
 set -euo pipefail
 
 N=${1:-40}
@@ -27,6 +28,11 @@ bad=$(jq -s --argjson f "$FIELDS" '
 
 seen=$(jq -rs 'map(.lang) | unique | join(" ")' "$answers")
 [ "$seen" = "$LANGS" ] || fail "expected answers from '$LANGS', got '$seen'"
+
+if [ -n "${EXPECT_VERSION:-}" ]; then
+  versions=$(jq -rs 'map(.version) | unique | join(", ")' "$answers")
+  [ "$versions" = "$EXPECT_VERSION" ] || fail "expected version $EXPECT_VERSION, got $versions"
+fi
 
 echo "$N knocks on $URL"
 jq -rs 'group_by(.lang)[] | "  \(.[0].lang)\t\(length)"' "$answers"
