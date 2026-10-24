@@ -1,7 +1,8 @@
 name: publish
 
-# Called by ci.yml once the smoke test has passed, never triggered on its own.
-#   push: false           dry run (PRs into main): build both platforms, log in to nothing, push nothing
+# Called by ci.yml once the smoke test has passed, never triggered on its own. The caller
+# decides the token's permissions: the dry run gets no packages: write.
+#   push: false           dry run (PRs into main): build both platforms, check, push nothing
 #   push: true            publish (main): push <image>:<version> unless it already exists
 #   level_tag: level-NN-… promote (level tags): give <image>:<version> the level tag, same digest
 on:
@@ -10,10 +11,6 @@ on:
       version: { type: string, required: true }
       push: { type: boolean, required: true }
       level_tag: { type: string, default: "" }
-
-permissions:
-  contents: read
-  packages: write
 
 defaults:
   run:
@@ -37,18 +34,22 @@ jobs:
           - { service: frontend, context: frontend }
     env:
       IMAGE: ghcr.io/${{ github.repository }}-${{ matrix.service }}
+      SERVICE: ${{ matrix.service }}
+      CONTEXT: ${{ matrix.context }}
     steps:
       - uses: actions/checkout@v7
+        with: { persist-credentials: false }
 
       - if: inputs.push
         env: { TOKEN: "${{ github.token }}" }
         run: echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
-      # Tags are immutable: an image that is already published is never rebuilt or overwritten.
+      # Tags are immutable: an image that is already published is never rebuilt or overwritten,
+      # and one that exists but was built from another commit stops the run.
       - id: guard
         if: inputs.push
         run: |
-          existing=$(scripts/image-digest.sh "$IMAGE:$VERSION")
+          existing=$(scripts/image-digest.sh --revision "$GITHUB_SHA" "$IMAGE:$VERSION")
           if [ -n "$existing" ]; then
             echo "$IMAGE:$VERSION already exists ($existing): skipping" | tee -a "$GITHUB_STEP_SUMMARY"
             echo "skip=true" >>"$GITHUB_OUTPUT"
@@ -59,10 +60,15 @@ jobs:
       - if: steps.guard.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v4
 
+      # What ships is what was checked: the amd64 image is built and started first, and the
+      # multi-platform build below reuses its layers from the builder's cache.
+      - if: steps.guard.outputs.skip != 'true' && matrix.service != 'frontend'
+        run: |
+          docker buildx build "$CONTEXT" --platform linux/amd64 --build-arg VERSION="$VERSION" --load --tag "check/$SERVICE"
+          scripts/check-image.sh "check/$SERVICE" "$SERVICE" "$VERSION"
+
       - if: steps.guard.outputs.skip != 'true'
-        env:
-          CONTEXT: ${{ matrix.context }}
-          PUSH: ${{ inputs.push }}
+        env: { PUSH: "${{ inputs.push }}" }
         run: |
           output=()
           [ "$PUSH" = true ] && output=(--push)
@@ -77,6 +83,7 @@ jobs:
             "${output[@]}"
           if [ "$PUSH" = true ]; then
             digest=$(scripts/image-digest.sh "$IMAGE:$VERSION")
+            [ -n "$digest" ] || { echo "::error::pushed $IMAGE:$VERSION but can't read it back"; exit 1; }
             echo "pushed $IMAGE:$VERSION @ $digest" | tee -a "$GITHUB_STEP_SUMMARY"
           else
             echo "dry run: built $IMAGE:$VERSION for linux/amd64 and linux/arm64, pushed nothing" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -94,23 +101,14 @@ jobs:
       LEVEL_TAG: ${{ inputs.level_tag }}
     steps:
       - uses: actions/checkout@v7
+        with: { persist-credentials: false, fetch-depth: 0 }
+
+      # Only main publishes sha-<7>, so a level tag only makes sense on a commit main has.
+      - run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "::error::$LEVEL_TAG is on ${GITHUB_SHA::7}, which isn't on main: tag main's merge commit"; exit 1; }
 
       - env: { TOKEN: "${{ github.token }}" }
         run: echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
-      - run: |
-          src=$(scripts/image-digest.sh "$IMAGE:$VERSION")
-          if [ -z "$src" ]; then
-            echo "::error::$IMAGE:$VERSION doesn't exist: this commit was never published from main"
-            exit 1
-          fi
-          dst=$(scripts/image-digest.sh "$IMAGE:$LEVEL_TAG")
-          if [ "$dst" = "$src" ]; then
-            echo "$IMAGE:$LEVEL_TAG is already $src: no-op" | tee -a "$GITHUB_STEP_SUMMARY"
-          elif [ -n "$dst" ]; then
-            echo "::error::$IMAGE:$LEVEL_TAG is $dst, not $VERSION ($src): level tags are immutable"
-            exit 1
-          else
-            docker buildx imagetools create --tag "$IMAGE:$LEVEL_TAG" "$IMAGE:$VERSION@$src"
-            echo "promoted $IMAGE:$VERSION to $LEVEL_TAG @ $src" | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+      - run: scripts/promote.sh "$IMAGE" "$VERSION" "$LEVEL_TAG" "$GITHUB_SHA" | tee -a "$GITHUB_STEP_SUMMARY"

@@ -35,8 +35,17 @@ scripts/smoke.sh
 
 It fires 40 knocks (`scripts/smoke.sh 100` for more), checks the contract and
 prints the tally. Needs `curl` and `jq`. `URL=…` knocks somewhere else, and
-`EXPECT_VERSION=sha-3f9c2a1` also requires that `version` in every answer (CI
-uses it).
+`EXPECT_VERSION=…` also requires that `version` in every answer. CI builds with
+`VERSION=sha-<7>` and checks it; locally the images say `dev` unless built
+with a version:
+
+```bash
+VERSION=sha-3f9c2a1 docker compose up --build -d
+```
+
+```bash
+EXPECT_VERSION=sha-3f9c2a1 scripts/smoke.sh
+```
 
 Same app, very different images (arm64, `docker images`):
 
@@ -96,25 +105,42 @@ git checkout level-03-load-balancing
 
 ```
 feature ──PR──▶ dev ──PR (merge commit)──▶ main ──▶ ghcr.io/…:sha-<7> ──tag──▶ :level-NN-…
-          smoke         smoke, only-dev-to-main,        publish                  promote
-                        dry-run publish
+          smoke        smoke, dry run,                 publish                  promote
+                       release-ready, only-dev-to-main
 ```
 
 1. Work on a branch and open a PR into `dev`. CI runs the smoke test.
-2. Open a PR from `dev` into `main`. CI adds a dry-run publish (both
-   platforms built, nothing pushed). Merge it with a **merge commit**.
+2. Open a PR from `dev` into `main`. CI adds a dry run: all five images are
+   built for both platforms and each backend is started and checked, but nothing
+   is pushed. `release-ready` (required) is green only if the dry run passed.
+   Merge it with a **merge commit**.
 3. CI on `main` publishes `ghcr.io/izentenosmith/knock-knock-<svc>:sha-<7>` for
-   all five images, for `linux/amd64` and `linux/arm64`.
+   all five images, for `linux/amd64` and `linux/arm64`. Each backend is started
+   and checked for its `version` before it is pushed.
 4. The packages come out **public**: published by this public repo's workflow,
    they take the repo's visibility, so anyone (and k3d) can pull without logging
    in. If one ever shows up private, switch it once on GitHub: the package →
    *Package settings* → *Change visibility* → **Public**.
-5. Tag the merge commit and push the tag:
-   `git tag -a level-NN-<slug> -m "…" && git push origin level-NN-<slug>`.
-   CI gives the same images that tag, with no rebuild.
+5. Tag `main`'s merge commit, by name, not whatever you have checked out, and
+   push only that tag. Level tags can never be moved or deleted, so wait for
+   step 3's run to be green first, and check the commit:
 
-Images are never overwritten: re-running a run skips what is already
-published, and `level-*` tags can't be moved or deleted.
+   ```bash
+   git fetch origin && git log -1 --oneline origin/main
+   ```
+
+   ```bash
+   git tag -a level-NN-<slug> origin/main -m "…" && git push origin level-NN-<slug>
+   ```
+
+   CI gives the same images that tag (same digest, no rebuild). If `main` is
+   still publishing that commit, the promotion waits for it. A tag on a commit
+   that isn't on `main`, or that doesn't look like `level-NN-<slug>`, fails
+   without touching any image.
+
+The pipeline never overwrites a published tag: re-running a run skips what is
+already published, and promotion refuses to move a level tag. (Anyone with
+write access to the packages could still change them by hand on GitHub.)
 
 Any published backend runs on its own:
 
@@ -128,8 +154,9 @@ curl localhost:8081/api/knock
 
 ## Requirements
 
-Docker, [k3d](https://k3d.io), `kubectl`. Go, Python, Rust and Node are only
-needed to run a backend outside a container.
+Docker, `curl` and `jq` (level 0 and 1); [k3d](https://k3d.io) and `kubectl`
+from level 2. Go, Python, Rust and Node are only needed to run a backend outside
+a container.
 
 ## License
 
