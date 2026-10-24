@@ -29,7 +29,8 @@ bad=$(jq -s --argjson f "$FIELDS" '
 seen=$(jq -rs 'map(.lang) | unique | join(" ")' "$answers")
 [ "$seen" = "$LANGS" ] || fail "expected answers from '$LANGS', got '$seen'"
 
-if [ -n "${EXPECT_VERSION:-}" ]; then
+if [ -n "${EXPECT_VERSION+set}" ]; then
+  [ -n "$EXPECT_VERSION" ] || fail "EXPECT_VERSION is set but empty"
   versions=$(jq -rs 'map(.version) | unique | join(", ")' "$answers")
   [ "$versions" = "$EXPECT_VERSION" ] || fail "expected version $EXPECT_VERSION, got $versions"
 fi

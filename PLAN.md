@@ -68,8 +68,10 @@ Timing rules:
 | Rust | `tiny_http` (the only crate) | `gcr.io/distroless/static` (musl build) |
 | TypeScript | Node 24 stdlib `http`, run directly (native type stripping, no build step) | `node:24-alpine` |
 
-Every Dockerfile is multi-stage, runs as non-root, and passes `VERSION` as a
-build arg. Image sizes span from about 8 MB to about 150 MB, and that gap is
+Every Dockerfile runs as non-root. The ones with something to build (Go, Rust,
+the frontend) are multi-stage; Python and TypeScript have nothing to build and are
+a single stage. The four backends take `VERSION` as a build arg (the frontend
+doesn't report one). Image sizes span from about 8 MB to about 240 MB, and that gap is
 part of the lesson.
 
 ### The frontend
@@ -107,7 +109,10 @@ knock-knock/
 ├── frontend/        Vite + React, nginx.conf, Dockerfile
 ├── compose.yaml     level 0 local run
 ├── scripts/
-│   └── smoke.sh     fire N knocks, assert all 4 langs answered + contract fields present
+│   ├── smoke.sh         fire N knocks, assert all 4 langs answered + contract fields present
+│   ├── check-image.sh   start one backend image, check its lang and version (CI)
+│   ├── image-digest.sh  digest of an image tag, or nothing if the registry says it's missing (CI)
+│   └── promote.sh       give a published image its level tag, same digest (CI)
 ├── k8s/             plain YAML from level 2; kustomize base/overlays from level 10
 ├── .github/workflows/
 ├── PLAN.md
@@ -157,24 +162,34 @@ The rotation is perfect only with `worker_processes 1`: each nginx worker keeps
 its own round-robin counter, and with the default `auto` (one worker per CPU)
 the first knocks all land on the same backend.
 
-**01 — pipeline.** GitHub Actions, two workflows. `publish.yml` only ever runs
-when `ci.yml` calls it, so nothing reaches the registry without a green smoke test.
+**01 — pipeline.** GitHub Actions, three workflows. `publish.yml` only ever
+runs when `ci.yml` calls it, so the pipeline pushes nothing without a green
+smoke test.
 - `ci.yml` runs on pushes to `dev` and `main`, on `level-*` tags, and on PRs into
-  `dev` and `main`. One job, `smoke`, runs the quickstart:
+  `dev` and `main`. Its `smoke` job runs the quickstart:
   `docker compose up --build --wait`, then `scripts/smoke.sh` with
-  `EXPECT_VERSION=sha-<7>`. On PRs into `main`, `only-dev-to-main` fails anything
-  that doesn't come from `dev`.
+  `EXPECT_VERSION=sha-<7>` (on PRs, `<7>` comes from GitHub's test merge commit).
+  On PRs into `main`, its `dry-run` job calls `publish.yml` without pushing, and
+  `release-ready` is green only if that dry run passed. On `main` and `level-*`
+  tags, its `publish` job calls `publish.yml` for real.
 - `publish.yml` (reusable) builds the five images as a matrix, for `linux/amd64`
   and `linux/arm64` (QEMU), and pushes `ghcr.io/izentenosmith/knock-knock-<svc>:sha-<7>`
-  on `main`. `VERSION` = `sha-<7>`. On PRs into `main` it's a dry run: everything
-  is built, nothing is pushed.
+  on `main`. `VERSION` = `sha-<7>`. Each backend's amd64 image is started and
+  checked (`scripts/check-image.sh`) before anything is pushed. Only the
+  `publish` job's token can write packages.
+- `only-dev-to-main.yml` runs only on PRs into `main` (also when a PR's base is
+  changed to `main`) and fails unless the head is this repo's `dev`.
 - Tags are **immutable** in the registry too. A `sha-<7>` that already exists is
-  never rebuilt (re-running a run is safe). A `level-*` tag doesn't build at all: it
-  retags the `sha-<7>` that `main` published, so both names share one digest.
+  never rebuilt (re-running a run is safe); one built from another commit stops
+  the run. A `level-*` tag doesn't build at all: `scripts/promote.sh` retags the
+  `sha-<7>` that `main` published (waiting for it if `main` is still
+  publishing), so both names share one digest. A level tag on a commit that
+  isn't on `main`, or not named `level-NN-<slug>`, fails before any image changes.
 - `dev` and `main` are protected: PRs only, with `smoke` required (and
-  `only-dev-to-main` on `main`). A ruleset stops `level-*` tags from being moved
-  or deleted. Merge `dev` into `main` with a merge commit, so `main` always
-  contains `dev`.
+  `only-dev-to-main` and `release-ready` on `main`). A ruleset stops `level-*`
+  tags from being moved or deleted. Merge `dev` into `main` with a merge commit,
+  so `main` always contains `dev`. Pushes to `main` and tags never cancel each
+  other: each commit gets its own concurrency group.
 
 The smoke test is the project's only test, and it grows with each level.
 

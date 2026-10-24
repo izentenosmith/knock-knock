@@ -1,0 +1,21 @@
+name: only-dev-to-main
+
+# Required on main: a PR into main must come from this repo's dev branch. It's a workflow of its
+# own that runs only for PRs into main, including when a PR's base is changed to main, so a
+# check that was skipped on a PR into dev can never stand in for it.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+permissions: {}
+
+jobs:
+  only-dev-to-main:
+    runs-on: ubuntu-latest
+    steps:
+      - env: # via env, never inline: branch and repository names are untrusted input
+          HEAD: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+        run: '[ "$HEAD" = dev ] && [ "$HEAD_REPO" = "$REPO" ] || { echo "main only accepts PRs from dev"; exit 1; }'
