@@ -1,0 +1,136 @@
+name: publish
+
+# Called by ci.yml once the smoke test has passed, never triggered on its own.
+#   push: false           dry run (PRs into main): build both platforms, log in to nothing, push nothing
+#   push: true            publish (main): push <image>:<version> unless it already exists
+#   level_tag: level-NN-… promote (level tags): give <image>:<version> the level tag, same digest
+on:
+  workflow_call:
+    inputs:
+      version: { type: string, required: true }
+      push: { type: boolean, required: true }
+      level_tag: { type: string, default: "" }
+
+permissions:
+  contents: read
+  packages: write
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  VERSION: ${{ inputs.version }}
+
+jobs:
+  build:
+    if: inputs.level_tag == ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # one failed service must not cancel the others; a re-run finishes the rest
+      matrix:
+        include:
+          - { service: go, context: backends/go }
+          - { service: python, context: backends/python }
+          - { service: rust, context: backends/rust }
+          - { service: ts, context: backends/ts }
+          - { service: frontend, context: frontend }
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}-${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - if: inputs.push
+        env: { TOKEN: "${{ github.token }}" }
+        run: echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      # Tags are immutable: an image that is already published is never rebuilt or overwritten.
+      - id: guard
+        if: inputs.push
+        run: |
+          # Digest of an image reference, or nothing if it doesn't exist (a missing tag says "not
+          # found", a package not created yet answers 403). Any other registry error fails the step.
+          lookup() {
+            local out
+            if out=$(docker buildx imagetools inspect "$1" --format '{{json .Manifest}}' 2>&1); then
+              jq -r .digest <<<"$out"
+            elif ! grep -Eqi 'not found|403 Forbidden|denied' <<<"$out"; then
+              echo "::error::can't tell whether $1 exists: $out" >&2
+              return 1
+            fi
+          }
+          existing=$(lookup "$IMAGE:$VERSION")
+          if [ -n "$existing" ]; then
+            echo "$IMAGE:$VERSION already exists ($existing): skipping" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.guard.outputs.skip != 'true'
+        uses: docker/setup-qemu-action@v4
+      - if: steps.guard.outputs.skip != 'true'
+        uses: docker/setup-buildx-action@v4
+
+      - if: steps.guard.outputs.skip != 'true'
+        env:
+          CONTEXT: ${{ matrix.context }}
+          PUSH: ${{ inputs.push }}
+        run: |
+          output=()
+          [ "$PUSH" = true ] && output=(--push)
+          docker buildx build "$CONTEXT" \
+            --platform linux/amd64,linux/arm64 \
+            --build-arg VERSION="$VERSION" \
+            --label org.opencontainers.image.source="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label org.opencontainers.image.revision="$GITHUB_SHA" \
+            --label org.opencontainers.image.version="$VERSION" \
+            --provenance=false --sbom=false \
+            --tag "$IMAGE:$VERSION" \
+            "${output[@]}"
+          if [ "$PUSH" = true ]; then
+            digest=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)
+            echo "pushed $IMAGE:$VERSION @ $digest" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "dry run: built $IMAGE:$VERSION for linux/amd64 and linux/arm64, pushed nothing" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+  promote:
+    if: inputs.level_tag != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [go, python, rust, ts, frontend]
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}-${{ matrix.service }}
+      LEVEL_TAG: ${{ inputs.level_tag }}
+    steps:
+      - env: { TOKEN: "${{ github.token }}" }
+        run: echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - run: |
+          # Digest of an image reference, or nothing if it doesn't exist (a missing tag says "not
+          # found", a package not created yet answers 403). Any other registry error fails the step.
+          lookup() {
+            local out
+            if out=$(docker buildx imagetools inspect "$1" --format '{{json .Manifest}}' 2>&1); then
+              jq -r .digest <<<"$out"
+            elif ! grep -Eqi 'not found|403 Forbidden|denied' <<<"$out"; then
+              echo "::error::can't tell whether $1 exists: $out" >&2
+              return 1
+            fi
+          }
+          src=$(lookup "$IMAGE:$VERSION")
+          if [ -z "$src" ]; then
+            echo "::error::$IMAGE:$VERSION doesn't exist: this commit was never published from main"
+            exit 1
+          fi
+          dst=$(lookup "$IMAGE:$LEVEL_TAG")
+          if [ "$dst" = "$src" ]; then
+            echo "$IMAGE:$LEVEL_TAG is already $src: no-op" | tee -a "$GITHUB_STEP_SUMMARY"
+          elif [ -n "$dst" ]; then
+            echo "::error::$IMAGE:$LEVEL_TAG is $dst, not $VERSION ($src): level tags are immutable"
+            exit 1
+          else
+            docker buildx imagetools create --tag "$IMAGE:$LEVEL_TAG" "$IMAGE:$VERSION@$src"
+            echo "promoted $IMAGE:$VERSION to $LEVEL_TAG @ $src" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi

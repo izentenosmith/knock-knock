@@ -15,8 +15,10 @@ watching them behave.
 
 ## Status
 
-✅ **Level 0 done:** the four backends, the React UI and Docker Compose.
-Levels 1 and up are still to come. See [PLAN.md](PLAN.md).
+✅ **Level 1 done:** every PR is built and smoke-tested by GitHub Actions, and
+each release to `main` publishes multi-arch images to GHCR. Level 0 (the four
+backends, the React UI and Docker Compose) is underneath. Levels 2 and up are
+still to come. See [PLAN.md](PLAN.md).
 
 ## Quickstart
 
@@ -32,7 +34,9 @@ scripts/smoke.sh
 ```
 
 It fires 40 knocks (`scripts/smoke.sh 100` for more), checks the contract and
-prints the tally. Needs `curl` and `jq`.
+prints the tally. Needs `curl` and `jq`. `URL=…` knocks somewhere else, and
+`EXPECT_VERSION=sha-3f9c2a1` also requires that `version` in every answer (CI
+uses it).
 
 Same app, very different images (arm64, `docker images`):
 
@@ -86,6 +90,39 @@ replay.
 
 ```bash
 git checkout level-03-load-balancing
+```
+
+## Pipeline
+
+```
+feature ──PR──▶ dev ──PR (merge commit)──▶ main ──▶ ghcr.io/…:sha-<7> ──tag──▶ :level-NN-…
+          smoke         smoke, only-dev-to-main,        publish                  promote
+                        dry-run publish
+```
+
+1. Work on a branch and open a PR into `dev`. CI runs the smoke test.
+2. Open a PR from `dev` into `main`. CI adds a dry-run publish (both
+   platforms built, nothing pushed). Merge it with a **merge commit**.
+3. CI on `main` publishes `ghcr.io/izentenosmith/knock-knock-<svc>:sha-<7>` for
+   all five images, for `linux/amd64` and `linux/arm64`.
+4. First publish only: on GitHub, open each of the five packages → *Package
+   settings* → *Change visibility* → **Public**, so anyone (and k3d) can pull
+   without logging in.
+5. Tag the merge commit and push the tag:
+   `git tag -a level-NN-<slug> -m "…" && git push origin level-NN-<slug>`.
+   CI gives the same images that tag, with no rebuild.
+
+Images are never overwritten: re-running a run skips what is already
+published, and `level-*` tags can't be moved or deleted.
+
+Any published backend runs on its own:
+
+```bash
+docker run --rm -p 8081:8080 ghcr.io/izentenosmith/knock-knock-rust:level-01-pipeline
+```
+
+```bash
+curl localhost:8081/api/knock
 ```
 
 ## Requirements

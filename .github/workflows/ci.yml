@@ -1,0 +1,62 @@
+name: ci
+
+on:
+  pull_request: { branches: [dev, main] }
+  push:
+    branches: [dev, main]
+    tags: ["level-*"]
+
+# One run per ref. A newer push cancels the older run, except on main and tags,
+# where cancelling could stop a publish halfway.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash # -eo pipefail: without it, `smoke.sh | tee` would hide a failing smoke test
+
+jobs:
+  only-dev-to-main:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - env: { HEAD: "${{ github.head_ref }}" } # via env, never inline: branch names are untrusted input
+        run: '[ "$HEAD" = dev ] || { echo "main only accepts PRs from dev"; exit 1; }'
+
+  smoke:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: version
+        run: |
+          echo "VERSION=sha-${GITHUB_SHA::7}" >>"$GITHUB_ENV"
+          echo "version=sha-${GITHUB_SHA::7}" >>"$GITHUB_OUTPUT"
+      - run: docker compose up --build --wait -d
+      - env: { EXPECT_VERSION: "${{ env.VERSION }}" }
+        run: |
+          scripts/smoke.sh | tee smoke.txt
+          { echo '```'; cat smoke.txt; echo '```'; } >>"$GITHUB_STEP_SUMMARY"
+      - if: failure()
+        run: docker compose logs
+
+  # Only after a green smoke test: a real publish on main, a promotion on level tags,
+  # and a dry run on PRs into main. Nothing else ever reaches the registry.
+  publish:
+    needs: smoke
+    if: >-
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/level-')))
+      || (github.event_name == 'pull_request' && github.base_ref == 'main')
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/publish.yml
+    with:
+      version: ${{ needs.smoke.outputs.version }}
+      push: ${{ github.event_name == 'push' }}
+      level_tag: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}

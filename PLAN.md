@@ -157,12 +157,24 @@ The rotation is perfect only with `worker_processes 1`: each nginx worker keeps
 its own round-robin counter, and with the default `auto` (one worker per CPU)
 the first knocks all land on the same backend.
 
-**01 — pipeline.** GitHub Actions, two workflows:
-- `ci.yml` runs on PRs and pushes. It builds the five images (matrix), runs
-  `docker compose up -d --wait`, then `scripts/smoke.sh`.
-- `publish.yml` runs on pushes to `main` and on `level-*` tags. It pushes to
-  `ghcr.io/izentenosmith/knock-knock-<svc>`, tagged `sha-<short>` plus the git
-  tag. `VERSION` = `sha-<short>`.
+**01 — pipeline.** GitHub Actions, two workflows. `publish.yml` only ever runs
+when `ci.yml` calls it, so nothing reaches the registry without a green smoke test.
+- `ci.yml` runs on pushes to `dev` and `main`, on `level-*` tags, and on PRs into
+  `dev` and `main`. One job, `smoke`, runs the quickstart:
+  `docker compose up --build --wait`, then `scripts/smoke.sh` with
+  `EXPECT_VERSION=sha-<7>`. On PRs into `main`, `only-dev-to-main` fails anything
+  that doesn't come from `dev`.
+- `publish.yml` (reusable) builds the five images as a matrix, for `linux/amd64`
+  and `linux/arm64` (QEMU), and pushes `ghcr.io/izentenosmith/knock-knock-<svc>:sha-<7>`
+  on `main`. `VERSION` = `sha-<7>`. On PRs into `main` it's a dry run: everything
+  is built, nothing is pushed.
+- Tags are **immutable** in the registry too. A `sha-<7>` that already exists is
+  never rebuilt (re-running a run is safe). A `level-*` tag doesn't build at all: it
+  retags the `sha-<7>` that `main` published, so both names share one digest.
+- `dev` and `main` are protected: PRs only, with `smoke` required (and
+  `only-dev-to-main` on `main`). A ruleset stops `level-*` tags from being moved
+  or deleted. Merge `dev` into `main` with a merge commit, so `main` always
+  contains `dev`.
 
 The smoke test is the project's only test, and it grows with each level.
 
