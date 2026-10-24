@@ -35,8 +35,9 @@ jobs:
       - uses: actions/checkout@v7
       - id: version
         run: |
-          echo "VERSION=sha-${GITHUB_SHA::7}" >>"$GITHUB_ENV"
-          echo "version=sha-${GITHUB_SHA::7}" >>"$GITHUB_OUTPUT"
+          version=sha-${GITHUB_SHA::7}
+          echo "VERSION=$version" >>"$GITHUB_ENV"
+          echo "version=$version" >>"$GITHUB_OUTPUT"
       - run: docker compose up --build --wait -d
       - env: { EXPECT_VERSION: "${{ env.VERSION }}" }
         run: |
