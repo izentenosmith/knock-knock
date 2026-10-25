@@ -64,10 +64,11 @@ kubectl apply -f k8s/
 ```
 
 There are no probes yet (level 4), so wait for the Deployments, then for the
-ingress to answer:
+ingress to answer (the same wait CI uses). If `kubectl wait` times out on the
+first, slow image pull, run it again:
 
 ```bash
-kubectl wait --for=condition=Available deployment --all --timeout=120s && curl -fsS -o /dev/null --retry 30 --retry-delay 2 --retry-all-errors localhost:8080/api/knock
+kubectl wait --for=condition=Available deployment --all --timeout=120s && curl -fsS -o /dev/null --retry 30 --retry-delay 2 --retry-all-errors --max-time 5 localhost:8080/api/knock
 ```
 
 Open [localhost:8080](http://localhost:8080): each tile now names a real pod
@@ -76,15 +77,16 @@ requires every `node` to start with it, so it fails if `NODE_NAME` isn't wired,
 or if you're knocking on compose:
 
 ```bash
-EXPECT_VERSION=sha-04f74b3 EXPECT_NODE_PREFIX=k3d-knock- scripts/smoke.sh
+EXPECT_NODE_PREFIX=k3d-knock- scripts/smoke.sh
 ```
 
 `k8s/` pins every image to one `sha-<7>` that `main` already published, the
-`version` the backends report. To move to a newer release, open a PR into `dev`
-that changes the five pins:
+`version` the backends report (CI's `cluster` job also sets `EXPECT_VERSION` to
+it). To move to a newer release, open a PR into `dev` that changes the five
+pins, for example to `sha-1a2b3c4`:
 
 ```bash
-sed -i '' -E 's/(knock-knock-[a-z]+):sha-[0-9a-f]{7}/\1:sha-<new 7>/' k8s/*.yaml
+NEW=sha-1a2b3c4 perl -pi -e 's/(knock-knock-[a-z]+):sha-[0-9a-f]{7}/$1:$ENV{NEW}/' k8s/*.yaml
 ```
 
 When you're done:
@@ -176,7 +178,10 @@ feature ──PR──▶ dev ──PR (merge commit)──▶ main ──▶ gh
    *Package settings* → *Change visibility* → **Public**.
 5. Tag `main`'s merge commit, by name, not whatever you have checked out, and
    push only that tag. Level tags can never be moved or deleted, so wait for
-   step 3's run to be green first, and check the commit:
+   step 3's run to be green first, and check the commit. A level that changes
+   app code ships in two releases (the code, then a PR that moves `k8s/`'s pin
+   to the code release's `sha-<7>`): tag the second one, so that replaying the
+   tag deploys that level's code.
 
    ```bash
    git fetch origin && git log -1 --oneline origin/main

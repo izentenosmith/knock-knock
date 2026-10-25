@@ -197,7 +197,8 @@ smoke test) can push.
   image changes. A tag run uses the tagged commit's workflows, so this holds for
   commits released with this pipeline.
 - `dev` and `main` are protected: PRs only, with `smoke` required (and
-  `only-dev-to-main` and `release-ready` on `main`). A ruleset stops `level-*`
+  `only-dev-to-main` and `release-ready` on `main`; level 2 adds `cluster` to
+  both). A ruleset stops `level-*`
   tags from being moved or deleted. Merge `dev` into `main` with a merge commit,
   so `main` always contains `dev`. Pushes to `main` and tags never cancel each
   other: each commit gets its own concurrency group.
@@ -224,7 +225,13 @@ Then `kubectl apply -f k8s/` (plain YAML, the default namespace).
   report as `version`. A commit can't pin its own `sha-<7>` (it's published only
   after the merge), so until level 13 the pin moves by hand, in a PR into `dev`. A
   level that changes app code therefore ships in two releases: the code, then the
-  pin bump.
+  pin bump to the code release's `sha-<7>`. The level tag goes on the second, so
+  `git checkout level-NN-…` plus `kubectl apply -f k8s/` runs that level's code.
+- Because `cluster` runs each PR's smoke test against the *pinned* images, smoke's
+  default checks (no variables set) must keep passing against them. A check that
+  only newer images can pass is opt-in (a variable, like `EXPECT_NODE_PREFIX`),
+  and `cluster` sets it only once the pin has moved. Otherwise the required check
+  would wait for images that can't be published until the PR merges.
 - There are no probes until level 4, so a pod counts as ready as soon as it
   starts. Waiting belongs to the environment, never to the smoke test: every
   Deployment `Available`, then the ingress answering a knock, then the strict
