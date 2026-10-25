@@ -370,3 +370,241 @@ The compose/k3d port collision (P8) is F37.
   - GHCR visibility via the API (the token lacks read:packages; the anonymous CI pull is the evidence);
   - ce03 false reds from backoff;
   - level-1 lib.sh internals beyond what level 2 calls.
+
+### Verdicts
+Iteration 1. Nothing carried. 37 findings adjudicated here. One fact check (F16: `k3d cluster
+create --help` gives `--wait` true with no timeout by default). No verification delegates.
+
+#### F1 — CONFIRMED minor
+- **Reason:** The deadlock is real: a required `cluster` runs the PR's smoke against the
+  published pin. It needs smoke's *default* checks to change, though, and Q5 settled that
+  smoke grows only through opt-in variables. No planned level changes the §1 contract.
+  It's a rule nobody wrote down, not a defect on today's path.
+
+#### F2 — CONFIRMED major
+- **Reason:** The README hard-codes `sha-04f74b3` outside `k8s/`. The documented bump leaves
+  it stale, so the next documented smoke command fails after the first supported bump.
+
+#### F3 — CONFIRMED major
+- **Reason:** Nothing says which of a level's two releases gets the immutable tag. The
+  README's "tag main's newest merge after green" points at release 1, whose `k8s/` can't run
+  that level's code. A wrong level tag is permanent.
+
+#### F4 — CONFIRMED major
+- **Reason:** ce02's "never applied" rests on the absence of output text that the product
+  controls. The regex also can't match `ingress.networking.k8s.io/…`. No step conclusion is
+  read.
+
+#### F5 — CONFIRMED major
+- **Reason:** ce01's "smoke never ran" rests on the absence of smoke output, which a redirect
+  removes. No step conclusion is read.
+
+#### F6 — CONFIRMED minor
+- **Reason:** In observe mode the BLOCKED clause is skipped and RUN isn't bound to the
+  scenario. That's the same class as level 1's F103 (minor). The user's release rule makes a
+  fresh `ACT=1` run the evidence, and that run does check BLOCKED and makes the PR itself.
+
+#### F7 — CONFIRMED major
+- **Reason:** c07 accepts a green run whose `k8s/` differs from the tree's, so the CI
+  criterion isn't re-proven for the released manifests. Unlike level 1's F71, the fix is
+  local to c07.
+
+#### F8 — CONFIRMED major
+- **Reason:** c07 asserts neither that smoke knocked on the ingress URL nor that the cluster
+  had agents. A port-forward or a one-node cluster passes.
+
+#### F9 — CONFIRMED minor
+- **Reason:** ce05's static check misses a push done with a secret. A static check can't be
+  complete, but the named mutations (`secrets.`, `docker push`/`login`, a pushing action) are
+  cheap to refuse.
+
+#### F10 — CONFIRMED minor
+- **Reason:** The CORS grep matches only the literal header. A moved nginx conf silently
+  passes (grep exits 2), and vendored trees can false-red it. It's a scope guard for this
+  level's diff, which review also covers, so minor.
+
+#### F11 — CONFIRMED minor
+- **Reason:** A partial run against a kept cluster can see objects that are no longer in
+  `k8s/`. The release check (a full run) rebuilds in c01, so minor.
+
+#### F12 — CONFIRMED minor
+- **Reason:** The dump has no events, ingress/endpoints, kube-system or `--previous` logs.
+  A Traefik-side failure would be hard to diagnose. Diagnostics only; nothing passes wrongly.
+
+#### F13 — CONFIRMED minor
+- **Reason:** `kubectl apply -f k8s/` reads `.yml`/`.json` too; the pin step reads `*.yaml`
+  only.
+
+#### F14 — CONFIRMED minor
+- **Reason:** Text parsing gets quoted, untagged and digest images wrong. Same root as F13:
+  the pin isn't read from the objects kubectl applies (see N8).
+
+#### F15 — CONFIRMED minor
+- **Reason:** Only `sha-<7>` pins can match `version`, and nothing enforces or explains that.
+  A level tag as a pin fails with a misleading version message.
+
+#### F16 — CONFIRMED minor
+- **Reason:** `k3d cluster create` waits forever by default, so a stalled pull ends in a
+  job-timeout cancel, and `failure()` dumps don't run.
+
+#### F17 — REFUTED
+- **Reason:** The documented path is a single `kubectl apply -f k8s/`. CI's ingress poll
+  covers the window, and ce03 shows convergence. Backoff on a manual split apply is
+  Kubernetes's documented behaviour, not this level's defect.
+- **Reopens only if:** the documented single apply is observed not converging within the
+  documented wait.
+
+#### F18 — REFUTED
+- **Reason:** The docs describe the release state. Protection is applied (with confirmation)
+  before the `dev`→`main` PR, and `08` is red in the release check until it is.
+- **Reopens only if:** a release is proposed while `08` is red.
+
+#### F19 — CONFIRMED minor
+- **Reason:** PLAN's 01 bullet still states level 1's required-check set as current.
+
+#### F20 — REFUTED
+- **Reason:** "Wait for main's run to be green" is the stricter reading the flow wants. A red
+  `cluster` on `main` deserves a look or a re-run before tagging. A tag run's red `cluster`
+  doesn't affect promotion.
+- **Reopens only if:** `cluster` fails on `main` or tag runs persistently while the release is
+  healthy.
+
+#### F21 — REFUTED
+- **Reason:** Level 1 used the same convention (status written in the level's PR, true at the
+  tag). The status says smoke runs *through a k3d ingress*, which is true, and the Pipeline
+  section says which images.
+- **Reopens only if:** a release is tagged while the README describes something it doesn't do.
+
+#### F22 — CONFIRMED minor
+- **Reason:** The README's wait isn't CI's: it has no `--max-time` and no hint for a slow first
+  pull. Proven as a mismatch; the impact is unproven.
+
+#### F23 — CONFIRMED minor
+- **Reason:** `sed -i ''` is BSD-only, and the README doesn't say macOS-only.
+
+#### F24 — REFUTED
+- **Reason:** How level 13 bumps the pin under PR-only protection is level 13's design
+  question. Level 2 only defers to it.
+- **Reopens only if:** level 13's architect review keeps a direct commit to `main`. Carry it
+  there as an input.
+
+#### F25 — REFUTED
+- **Reason:** Deliberate, and it mirrors `EXPECT_VERSION` (a set-but-empty variable is a typo
+  to catch, not to skip).
+- **Reopens only if:** a supported environment exports it empty by default.
+
+#### F26 — CONFIRMED minor
+- **Reason:** c05, `pinned_tag` and ce04 ignore initContainers, so an unpinned sixth image
+  would pass.
+
+#### F27 — CONFIRMED minor
+- **Reason:** c02 doesn't exclude a glob reading, and doesn't check that the failure names the
+  stray node.
+
+#### F28 — CONFIRMED minor
+- **Reason:** The tests rely on unset `URL`/`EXPECT_*` without unsetting them. Mostly false
+  reds; the RUN/PR leak is the level-1 lib's (F72, accepted).
+
+#### F29 — CONFIRMED minor
+- **Reason:** "Unchanged when unset" is compared on passing runs only.
+
+#### F30 — CONFIRMED minor
+- **Reason:** The arch check is skipped on Linux arm64 (`aarch64`). The README not being read
+  is N7's accepted duplication, not a defect.
+
+#### F31 — CONFIRMED minor
+- **Reason:** ce04 misses hostPort/hostNetwork, nodeName, priorityClassName, rollout timing
+  fields and initContainers.
+
+#### F32 — CONFIRMED minor
+- **Reason:** ce03 proves a restart, not that nginx failed to resolve `knock-api`.
+
+#### F33 — CONFIRMED minor
+- **Reason:** c03 accepts extra ports on `knock-api`.
+
+#### F34 — CONFIRMED minor
+- **Reason:** c04 skips an answer whose pod is unknown and whose node is missing.
+
+#### F35 — CONFIRMED minor
+- **Reason:** `! nc -z …` reads "free" when `nc` is missing. The rest (the kubeconfig context,
+  an ACT PR left open on failure) matches the documented commands and level 1's accepted
+  harness shape.
+
+#### F36 — REFUTED
+- **Reason:** A duplicate of F6's run-binding half, adjudicated there.
+- **Reopens only if:** never on its own; through F6.
+
+#### F37 — REFUTED
+- **Reason:** The README says to stop compose first. The second start fails loudly with a bind
+  error, and with the README's `EXPECT_NODE_PREFIX` a smoke that lands on compose fails
+  (`node` is `local`).
+- **Reopens only if:** a collision passes smoke with the prefix set.
+
+**Smells cross-check.**
+- N8 (the pin computed three ways) is the root of F13/F14. The fix reads the pin from the
+  objects kubectl would apply, which retires the CI's text parsing rather than patching it.
+- N7 (the recipe in three places) is where F2/F22 drift lives. The fixes keep the copies
+  identical; they don't merge them.
+
+### Remediation slices
+- [ ] [major] F2 — The README's k3d smoke command passes for whatever pin `k8s/` holds: no
+      `sha-<7>` appears in the README outside an example, and the bump changes only `k8s/`.
+- [ ] [major] F3 — PLAN's level 02 note and README step 5 say which release a level is tagged
+      on when it changes app code: the pin-bump release, whose `k8s/` pins the code release's
+      `sha-<7>`.
+- [ ] [major] F4 — ce02 fails unless the `cluster` job's apply step (and every step after the
+      pin check) concluded `skipped` (read through the job's step conclusions), and the
+      pin-check step concluded `failure`.
+- [ ] [major] F5 — ce01 fails unless the `cluster` job's smoke step concluded `skipped` and
+      the wait step concluded `failure`.
+- [ ] [major] F7 — c07 fails ("stale observation") unless the observed PR head's `k8s/` is
+      identical to the tree's `k8s/`.
+- [ ] [major] F8 — c07 fails unless the `cluster` output shows smoke knocked on
+      `http://localhost:8080/api/knock` and the cluster had both agents
+      (`k3d-knock-agent-0`, `k3d-knock-agent-1`).
+- [ ] [minor] F1 — PLAN's level 02 note states the rule: smoke's default (unset-variable)
+      checks must pass against the pinned images, so any check that only new images can
+      satisfy is opt-in until the pin moves.
+- [ ] [minor] F6 — In observe mode, ce01/ce02 fail unless RUN is a `pull_request` run into
+      `dev` from their own `acceptance/*` branch.
+- [ ] [minor] F9 — ce05 fails if the `cluster` job references any secret, logs in to a
+      registry, or pushes an image.
+- [ ] [minor] F10 — ce04 fails if the nginx config it checks is missing, and catches CORS
+      wired through a library (case-insensitive `cors` in backend sources, excluding vendored
+      trees).
+- [ ] [minor] F11 — A reused harness cluster holds exactly `k8s/`'s objects (pruned), and
+      the wait covers finished rollouts.
+- [ ] [minor] F12 — On failure, the `cluster` job's dump also shows events, the
+      Ingress/Services/EndpointSlices, kube-system pods and previous container logs.
+- [ ] [minor] F13 — The pin check reads every object `kubectl apply -f k8s/` would apply,
+      `.yml`/`.json` included.
+- [ ] [minor] F14 — The pin check reads image references from the parsed objects, so quoting,
+      missing tags and digests are handled. An image without a tag fails, saying so.
+- [ ] [minor] F15 — A pin that isn't a `sha-<7>` tag fails the `cluster` job before applying,
+      saying pins must be `sha-<7>`.
+- [ ] [minor] F16 — Cluster creation in CI is bounded, and a stalled create fails the job
+      (so the failure dump runs) instead of being cancelled.
+- [ ] [minor] F19 — PLAN's 01 bullet doesn't contradict the 02 note on required checks.
+- [ ] [minor] F22 — The README's wait is CI's wait (the same flags), with a note on what to
+      do if a first, slow pull times out.
+- [ ] [minor] F23 — The README's pin-bump command works with both BSD and GNU tools.
+- [ ] [minor] F26 — c05, `pinned_tag` and ce04 include initContainers.
+- [ ] [minor] F27 — c02 fails a glob-reading implementation (`EXPECT_NODE_PREFIX='k3d-*'`
+      against `k3d-other-agent-0`), and requires the failure to name the stray node value.
+- [ ] [minor] F28 — c01, c02 and ce03 unset `URL`, `EXPECT_VERSION` and `EXPECT_NODE_PREFIX`
+      where they mean them unset, and c01/ce03 pass `URL` explicitly.
+- [ ] [minor] F29 — c02 also compares failure output (a version mismatch, a missing language)
+      with the base smoke when the prefix is unset.
+- [ ] [minor] F30 — c01's arch check runs on `aarch64` hosts too.
+- [ ] [minor] F31 — ce04 also refuses hostPort/hostNetwork, nodeName, priorityClassName,
+      minReadySeconds/progressDeadlineSeconds and initContainers' forbidden fields.
+- [ ] [minor] F32 — ce03 requires the frontend's previous log to show nginx failing to
+      resolve `knock-api`.
+- [ ] [minor] F33 — c03 requires `knock-api` to have exactly one port, 8080→8080.
+- [ ] [minor] F34 — c04 flags any answer whose pod isn't a known backend pod or whose node is
+      missing.
+- [ ] [minor] F35 — The harness fails if `nc` is missing, instead of reading the port as free.
+
+### Verdict: NO-GO
+- **Reason:** 6 confirmed majors are open (F2, F3, F4, F5, F7, F8), plus 23 confirmed minors.
+  8 refuted, 0 INCONCLUSIVE. Iteration 1 of at most 3. Carried smells: N1, N3, N5, N6–N10.
