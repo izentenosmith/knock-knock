@@ -42,6 +42,45 @@ jobs:
       - if: failure()
         run: docker compose logs
 
+  # The same smoke test through the ingress of a k3d cluster running k8s/ as committed. It never
+  # builds: k8s/ pins images that are already published, and EXPECT_VERSION is that pin.
+  cluster:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      K3D_VERSION: v5.9.0
+      K3D_SHA256: 06d8f25bc3a971c4eb29e0ff08429b180402db0f4dec838c9eac427e296800a0 # k3d-linux-amd64
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - name: Read the one tag k8s/ pins
+        run: |
+          tags=$(grep -hoE 'image: *[^ ]+' k8s/*.yaml | sed -E 's/^image: *[^:]+://' | sort -u)
+          [ "$(wc -w <<<"$tags")" -eq 1 ] || { echo "::error::the image pins disagree: $(tr '\n' ' ' <<<"$tags")"; exit 1; }
+          echo "EXPECT_VERSION=$tags" >>"$GITHUB_ENV"
+      - name: Install k3d
+        run: |
+          curl -fsSLo k3d "https://github.com/k3d-io/k3d/releases/download/$K3D_VERSION/k3d-linux-amd64"
+          sha256sum -c <<<"$K3D_SHA256  k3d"
+          sudo install k3d /usr/local/bin/k3d && rm k3d
+          k3d version
+      - run: k3d cluster create knock --agents 2 -p "8080:80@loadbalancer"
+      - run: kubectl apply -f k8s/
+      # No probes until level 4: wait for the Deployments, then for the ingress to answer. The
+      # smoke test itself never retries.
+      - run: |
+          kubectl wait --for=condition=Available deployment --all --timeout=120s
+          curl -fsS -o /dev/null --retry 30 --retry-delay 2 --retry-all-errors --max-time 5 localhost:8080/api/knock
+      - env: { EXPECT_NODE_PREFIX: k3d-knock- }
+        run: scripts/smoke.sh 2>&1 | tee smoke.txt
+      - if: always() && hashFiles('smoke.txt') != ''
+        run: |
+          { echo '```'; cat smoke.txt; echo '```'; } >>"$GITHUB_STEP_SUMMARY"
+      - if: failure()
+        run: |
+          kubectl get pods -o wide && kubectl describe pods || exit 0
+          for pod in $(kubectl get pods -o name); do kubectl logs --prefix --all-containers "$pod" || true; done
+
   # After a green smoke test only: publish sha-<7> on main, promote it on level tags.
   publish:
     needs: smoke
