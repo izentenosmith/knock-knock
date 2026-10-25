@@ -214,38 +214,55 @@ Then `kubectl apply -f k8s/` (plain YAML, the default namespace).
   replica each) carry a shared label `pool: knock`, and **one** Service
   `knock-api` selects that label. The frontend gets its own Deployment and
   Service, and the Ingress routes `/` to it. The frontend's nginx still proxies
-  to `knock-api:8080`, now the Service.
+  to `knock-api:8080`, now the Service. nginx resolves that name once, at
+  startup, to the Service's ClusterIP. If `knock-api` is deleted and recreated
+  (a new ClusterIP), a running frontend keeps proxying to the old, dead address,
+  and every knock fails until `kubectl rollout restart deployment/frontend`.
 - `POD_NAME` / `NODE_NAME` come from the Downward API. A knock can prove only
   `node`: a pod's hostname is its name, so `pod` reads the same with or without
   `POD_NAME`. The smoke test's opt-in `EXPECT_NODE_PREFIX=k3d-knock-` fails on any
   answer whose `node` doesn't start with it (`local` means `NODE_NAME` isn't
   wired, or the knock landed on compose).
-- **The manifests pin images that are already published.** All five reference one
-  `sha-<7>` that `main` published (no `latest`), the same string the backends
-  report as `version`. A commit can't pin its own `sha-<7>` (it's published only
-  after the merge), so until level 13 the pin moves by hand, in a PR into `dev`. A
-  level that changes app code therefore ships in two releases: the code, then the
-  pin bump to the code release's `sha-<7>`. The level tag goes on the second, so
-  `git checkout level-NN-…` plus `kubectl apply -f k8s/` runs that level's code.
+- **The manifests pin images that are already published.** `k8s/` runs only the
+  five knock-knock images, all on one `sha-<7>` that `main` published (no
+  `latest`), the same string the backends report as `version`. A commit can't pin
+  its own `sha-<7>` (it's published only after the merge), so until level 13 the
+  pin moves by hand, in a PR into `dev`.
+- **A level that changes anything baked into an image** (a backend, the frontend,
+  nginx.conf, a Dockerfile) therefore ships in two releases. Release 1 is the
+  code. Release 2 holds only the pin bump to release 1's `sha-<7>`, plus the
+  `k8s/` and `cluster` changes that need the new images; nothing else is merged
+  into `dev` in between. The level tag goes on release 2, so `git checkout
+  level-NN-…` plus `kubectl apply -f k8s/` runs that level's code. The tag's own
+  images (promoted from release 2's `sha-<7>`) are the same code but report
+  release 2's `sha-<7>` as `version`, while the replayed cluster reports release
+  1's.
 - Because `cluster` runs each PR's smoke test against the *pinned* images, smoke's
-  default checks (no variables set) must keep passing against them. A check that
-  only newer images can pass is opt-in (a variable, like `EXPECT_NODE_PREFIX`),
-  and `cluster` sets it only once the pin has moved. Otherwise the required check
-  would wait for images that can't be published until the PR merges.
+  default checks (no variables set) must keep passing against them. A new check
+  that only newer images can pass is opt-in (a variable), and `cluster` turns it
+  on in release 2, once the pin has moved. Otherwise the required check would
+  wait for images that can't be published until the PR merges.
+  (`EXPECT_NODE_PREFIX` is opt-in for compose's sake; level 1's images already
+  pass it, so `cluster` sets it from level 2 on.)
 - There are no probes until level 4, so a pod counts as ready as soon as it
   starts. Waiting belongs to the environment, never to the smoke test: every
   Deployment `Available`, then the ingress answering a knock, then the strict
   smoke test. If the frontend starts before the Service exists, nginx can't
   resolve `knock-api` and exits; it restarts until the Service is there. That can
-  take minutes: the restarts back off (up to 5 min), and CoreDNS caches the "no
-  such host" answer for 30 s. A single `kubectl apply -f k8s/` creates the
-  Service before nginx starts, so the normal path never sees it.
+  take minutes: the restarts back off (up to 5 min), and CoreDNS may briefly
+  cache the "no such host" answer. A single `kubectl apply -f k8s/` applies
+  `frontend.yaml` first, but creates the Service well before the frontend's
+  container starts, so in practice the normal path doesn't hit this.
 - CI gains the job `cluster`, beside `smoke` and required on `dev` and `main`
   like it. It installs a pinned k3d, creates the cluster with the same command,
   applies `k8s/` as committed (it never builds), waits, and runs the same smoke
   test through the ingress with `EXPECT_VERSION` = the pin and
-  `EXPECT_NODE_PREFIX=k3d-knock-`. Pins that disagree fail before anything is
-  applied. On failure it dumps the pods, their descriptions and logs. `publish`
+  `EXPECT_NODE_PREFIX=k3d-knock-`. Before anything is applied it reads every
+  container image kubectl would apply from `k8s/`, prints them, and fails unless
+  they're all `ghcr.io/izentenosmith/knock-knock-<name>` on one `sha-<7>` tag
+  (an unpublished tag shows up later, as a failed pull). On failure it dumps the
+  Docker and k3d state, every namespace's pods, Ingress, Services, EndpointSlices
+  and events, Traefik's log, and the pods' current and previous logs. `publish`
   still needs only `smoke`: `cluster` tests the already-published pin, not the
   image about to be pushed.
 

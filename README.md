@@ -179,9 +179,11 @@ feature ──PR──▶ dev ──PR (merge commit)──▶ main ──▶ gh
 5. Tag `main`'s merge commit, by name, not whatever you have checked out, and
    push only that tag. Level tags can never be moved or deleted, so wait for
    step 3's run to be green first, and check the commit. A level that changes
-   app code ships in two releases (the code, then a PR that moves `k8s/`'s pin
-   to the code release's `sha-<7>`): tag the second one, so that replaying the
-   tag deploys that level's code.
+   anything baked into an image ships in two releases: the code, then a release
+   that holds only the PR moving `k8s/`'s pin to the code release's `sha-<7>`
+   (plus the `k8s/` and CI changes that need the new images). Tag the second one,
+   so that replaying the tag deploys that level's code. Its level-tagged images
+   are the same code, but report the second release's `sha-<7>` as `version`.
 
    ```bash
    git fetch origin && git log -1 --oneline origin/main
@@ -215,7 +217,7 @@ curl localhost:8081/api/knock
 ## Requirements
 
 Docker, `curl` and `jq` (level 0 and 1); [k3d](https://k3d.io) and `kubectl`
-from level 2. Go, Python, Rust and Node are only needed to run a backend outside
+from level 2 (and `perl` for the pin bump). Go, Python, Rust and Node are only needed to run a backend outside
 a container.
 
 ## License
