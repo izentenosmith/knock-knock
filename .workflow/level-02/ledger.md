@@ -1132,3 +1132,341 @@ on the delegates' evidence; no verification delegates.
 - [x] F65 — verified by lib-cluster.sh `wait_ready` (fails on no or unlistable Deployments)
 - [x] F66 — verified by `bind_run`/`merge_state` in lib-cluster.sh, used by ce01/ce02/ce06
 - [x] F67 — verified by c01 (Docker's architecture), green locally
+- [x] F60, F61 — re-observed: c07 PASS on PR #33's run 40209005241 (exact nodes, loadbalancer
+      mapping, printed images equal to the tree's)
+
+### Smells
+- **N1, N3, N5, N6, N7, N9, N10** — left: condition not met. N8 stays retired.
+- No new smells. ce01/ce02/ce06 now share `bind_run`/`merge_state` (lib-cluster.sh) instead of
+  three copies.
+
+### Findings (unadjudicated)
+Iteration 3 (final): three read-only delegates: the last round's CI/docs diff (C), its harness
+diff (H), and an end-to-end read against the done criteria (E). Findings are condensed; ids
+are new. Plus one found while verifying (F96).
+
+#### F71
+- **Target:** CI pin check, a trailing image-less container (C1)
+- **Evidence:** `$(…)` strips trailing newlines, so an empty image last in the stream escapes
+  `grep -qx ''`. "No containers" is misreported when the only image is empty.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F72
+- **Target:** `has("containers")` matches non-pod objects (C2)
+- **Evidence:** a ConfigMap, CRD schema or CR with a `containers` key gives a jq type error or
+  a false "no image". Not reachable today.
+- **Confidence:** proven (jq)
+- **Severity hint:** minor
+
+#### F73
+- **Target:** the pin check doesn't count or name the five images (C3, E5)
+- **Evidence:** a misspelled or duplicated knock-knock name passes until the pull fails. The
+  comment and PLAN overstate "the five".
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F74
+- **Target:** PLAN's dump wording against the dump's real scope (C4)
+- **Evidence:** pod logs come from default only, plus Traefik's; there are no logs from the
+  helm-install job, CoreDNS or svclb.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F75
+- **Target:** README and PLAN disagree on release-2 contents (C5)
+- **Evidence:** README's "holds only the PR … plus …" with "CI changes" contradicts PLAN's "only
+  … `cluster` changes, nothing else merged in between". A build-affecting CI change in
+  release 2 would break "same code".
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F76
+- **Target:** unbounded kubectl apply/dry-run against a hung API server (C6)
+- **Evidence:** a job-timeout cancel skips the dump.
+- **Confidence:** unproven
+- **Severity hint:** minor
+
+#### F77
+- **Target:** README "each tile now names a real pod and node" (E1, E7)
+- **Evidence:** App.jsx shows `pod` on the tile and `node` only in the hover tooltip (PLAN §1:
+  "Hover shows the full signature"); the tally has no node view. Level 2 changes no app code.
+- **Confidence:** proven
+- **Severity hint:** major
+
+#### F78
+- **Target:** the required `cluster` check never loads the UI (E2)
+- **Evidence:** CI requests only `/api/knock`. An Ingress `/` → `knock-api` would pass `cluster`
+  while `/` has no UI. c01/c06 catch it locally at the release check.
+- **Confidence:** proven
+- **Severity hint:** major
+
+#### F79
+- **Target:** a wrong POD_NAME fieldRef is invisible to CI (E3)
+- **Evidence:** smoke checks only `node`; c04 checks the spec locally.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F80
+- **Target:** nginx.conf's rotation comments and README's silence on random order in k3d (E4)
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F81
+- **Target:** learners' k3d/kubectl versions are unpinned (E6)
+- **Confidence:** unproven
+- **Severity hint:** minor
+
+#### F82
+- **Target:** the README tagline "worker-2" (E7)
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F83
+- **Target:** `cluster` not yet required in live protection (E8, F18's territory)
+- **Confidence:** proven (current state)
+- **Severity hint:** minor
+
+#### F84
+- **Target:** ci.yml doesn't re-run on `edited` (a base change) (E9, pre-existing)
+- **Confidence:** unproven
+- **Severity hint:** minor
+
+#### F85
+- **Target:** ce05's static ban misses `set +e`, `set +o pipefail`, `if`/`!`/`& wait`; two of
+  its patterns can't hide a failure under `-e` (H1)
+- **Confidence:** proven
+- **Severity hint:** major
+
+#### F86
+- **Target:** the ownership record when the private kubeconfig is missing or empty (H2)
+- **Evidence:** OWNED is written before KUBECFG. An empty KUBECFG or a round-2 cluster makes
+  `owned()` false; cluster-down skips the delete but removes OWNED, so the cluster is
+  orphaned and refused forever.
+- **Confidence:** proven (control flow)
+- **Severity hint:** minor
+
+#### F87
+- **Target:** ce03's KEEP_CLUSTER warning is invisible through run.sh (H3)
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F88
+- **Target:** merge_state may stop on a transient DRAFT/UNSTABLE right after `gh pr ready` (H4)
+- **Confidence:** unproven
+- **Would be settled by:** the ACT=1 runs of ce01/ce02/ce06, logging the states read
+- **Severity hint:** minor
+
+#### F89
+- **Target:** ce05 lets `vars.*` credentials and `imagetools create` through (H5)
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F90
+- **Target:** ACT cleanup leaks the throwaway PR if `wait_run` fails (H6; ce01/ce02/ce06)
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F91
+- **Target:** `.cluster-kubeconfig` is mode 0644 (it holds a client key; gitignored) (H7)
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F92
+- **Target:** ce04 `present` counts `""`; misses revisionHistoryLimit, paused,
+  imagePullSecrets, hostPID/IPC, ephemeralContainers (H8)
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F93
+- **Target:** c01's arch check is skipped silently if `docker info` fails or reads another
+  context (H9)
+- **Confidence:** proven / unproven
+- **Severity hint:** minor
+
+#### F94
+- **Target:** ce05's substring ban could false-red a future diagnostic (`kubectl get secrets`) (H10)
+- **Confidence:** proven (hypothetical edit)
+- **Severity hint:** minor
+
+#### F95
+- **Target:** duplicate of F73 (E5)
+- **Severity hint:** minor
+
+#### F96
+- **Target:** c07 permissions parse could SIGPIPE (found by Tyr while re-observing)
+- **Evidence:** `awk … {exit}` at the end of `job_log | … | sed | awk` lets sed die with
+  SIGPIPE. Under pipefail the assignment exits 141 with no FAIL line. Seen once, after which
+  c07 passed on reruns.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+### Surfaces
+- **Swept (C):** the jq filter over a List; `grep -qx ''` mid-stream; the indented echo under
+  bash 3.2 and 5; error order under pipefail; the dump can't fail or flood; the 25-min budget
+  against the summed bounds; PLAN's level-1-images and Service-recreate claims; the README perl
+  and Requirements. All held.
+- **Swept (E):** names, ports and env across k8s/, nginx, backends and Dockerfiles; the pin is
+  main's published head; the two-release rule against promote.sh and publish.yml; level-1
+  workflows untouched; no scope creep; arm64; the version check. All held.
+- **Swept (H):** the ce04 `$?` idiom; bind_run's empty-read guard; c07's node grep and awk
+  extraction against real log formatting; ce06's breakage (`local` fallback → the prefix FAIL;
+  Wait unaffected; `smoke` untouched); `kc` ignores KUBECONFIG; wait_ready; ce05's shell and
+  continue-on-error checks; merge_state under errexit. All held.
+- **Unattacked:** the ACT-mode tests can't run until `dev` has `k8s/` (true since iteration
+  1, not new); live k3d/GitHub timing; file modes on disk.
+
+### Verdicts
+Iteration 3 (final). Closed this iteration: 26 slices (F39–F69 confirmed set, F60/F61
+re-observed). Carried refutations stand: F17, F18, F20, F21, F24, F25, F36, F37, F48, F54, F55,
+F68, F70. 26 new findings adjudicated here on the delegates' evidence. One re-run made: c07
+against run 40209005241 (5/5 green after F96's fix).
+
+#### F71 — CONFIRMED minor
+- **Reason:** A trailing image-less container escapes the explicit check (it still fails later,
+  at apply or the wait).
+
+#### F72 — REFUTED
+- **Reason:** `k8s/` may hold only Deployments, Services and an Ingress (ce04), so no other
+  object reaches the filter.
+- **Reopens only if:** a level admits other kinds into `k8s/` (that level must revisit the
+  filter).
+
+#### F73 — CONFIRMED minor
+- **Reason:** The comment and PLAN claim "the five"; the step checks the repository family
+  only. c05 enforces the exact five locally at the release check.
+
+#### F74 — CONFIRMED minor
+- **Reason:** PLAN's wording overstates the log scope.
+
+#### F75 — CONFIRMED minor
+- **Reason:** README and PLAN disagree on release 2's contents.
+
+#### F76 — REFUTED
+- **Reason:** The bounded steps cover the realistic failures, and a hung API server is
+  unproven.
+- **Reopens only if:** a `cluster` run is cancelled at the job timeout without a dump.
+
+#### F77 — CONFIRMED minor
+- **Reason:** README overclaims: the tile shows `pod`, `node` is on hover. Every
+  signature field is visible in the UI, which is "the same UI" by design (no app change at
+  level 2), so "shows pod and node names" holds through the hover. The README sentence is
+  wrong. Whether tiles should show `node` is a product question for the user, not a defect
+  here.
+
+#### F78 — CONFIRMED minor
+- **Reason:** The brief's CI criterion is "smoke through the ingress", which holds. The UI half
+  of done-criterion 1 is proven by c01/c06 in the release check, the level's evidence. A UI
+  probe in `cluster` would be defense in depth: a tracked follow-up, not a gap in the release
+  evidence.
+
+#### F79 — CONFIRMED minor
+- **Reason:** Same shape as F78. c04 proves the spec at the release check, and CI doesn't.
+
+#### F80 — CONFIRMED minor
+- **Reason:** README doesn't say k3d's order is random. (The nginx.conf comments are app code,
+  out of scope; level 3 is the lesson.)
+
+#### F81 — REFUTED
+- **Reason:** Deferred by design (k3s/Traefik versions beyond the k3d pin).
+- **Reopens only if:** a learner's k3d/kubectl diverges from CI in an observed failure.
+
+#### F82 — REFUTED
+- **Reason:** Level-0 flavour text, not a level-2 claim.
+- **Reopens only if:** the tagline is presented as an instruction.
+
+#### F83 — REFUTED
+- **Reason:** F18 stands, and no release has been proposed while 08 is red.
+- **Reopens only if:** a release is proposed while `08` is red.
+
+#### F84 — REFUTED
+- **Reason:** Pre-existing in level 1, and checks attach to the SHA (level 1's F82 refuted the
+  same mechanism).
+- **Reopens only if:** a case is shown where a re-targeted PR's checks don't match the merged
+  content.
+
+#### F85 — CONFIRMED minor
+- **Reason:** The static scan is inherently incomplete. The claim it backs ("a red smoke fails
+  `cluster`") is proven at runtime by ce06 in the ACT=1 release check, which runs the actual
+  workflow and would catch `set +o pipefail`. Hardening the scan is a tracked follow-up.
+
+#### F86 — CONFIRMED minor
+- **Reason:** It can orphan a harness cluster. It fails closed: refused, never deleted.
+
+#### F87 — CONFIRMED minor
+- **Reason:** run.sh drops the warning.
+
+#### F88 — INCONCLUSIVE
+- **Settled by:** the ACT=1 runs of ce01/ce02/ce06 at the release check (the user's
+  confirmation is needed); they read the merge state live
+- **Pass:** 1
+
+#### F89 — CONFIRMED minor
+- **Reason:** Same class as F85, and ce06 covers the runtime claim.
+
+#### F90 — CONFIRMED minor
+- **Reason:** The same shape level 1 accepted (e01 and others).
+
+#### F91 — CONFIRMED minor
+- **Reason:** The file holds a local test cluster's admin key with world-readable permissions.
+
+#### F92 — CONFIRMED minor
+- **Reason:** `""` is inconsistent with the rule, and some fields aren't covered.
+
+#### F93 — CONFIRMED minor
+- **Reason:** The check is skipped silently on a `docker info` failure.
+
+#### F94 — REFUTED
+- **Reason:** It's hypothetical, and a false red is loud; narrow the ban when a real diagnostic
+  needs it.
+- **Reopens only if:** a needed diagnostic is blocked.
+
+#### F95 — REFUTED
+- **Reason:** A duplicate of F73.
+
+#### F96 — CONFIRMED minor
+- **Reason:** The flake was real (exit 141) but only ever false red. Fixed while verifying:
+  both awk filters now read to the end. c07 went 5/5.
+
+### Remediation slices
+- [ ] [minor] F71 — The pin check's empty-image test also catches a trailing image-less container.
+- [ ] [minor] F73 — The pin-check comment and PLAN say what the step checks (the knock-knock
+      repository family, one sha tag). c05 checks the exact five.
+- [ ] [minor] F74 — PLAN describes the dump's log scope exactly.
+- [ ] [minor] F75 — README step 5 matches PLAN on release 2's contents.
+- [ ] [minor] F77 — README says tiles name the pod, and hovering a tile shows its node (with
+      the rest of the signature).
+- [ ] [minor] F78 — `cluster` also fetches `/` through the ingress and requires the frontend's
+      page.
+- [ ] [minor] F79 — CI fails when an answer's `pod` isn't a `knock-<lang>-` pod name.
+- [ ] [minor] F80 — README's k3d section says the order is random now (level 3 explains why).
+- [ ] [minor] F85 — ce05 also refuses `set +e`/`set +o`, `if`/`!` around smoke, and
+      backgrounding in the smoke step.
+- [ ] [minor] F86 — The harness writes KUBECFG before OWNED, and cluster-down keeps OWNED when
+      it can't delete.
+- [ ] [minor] F87 — run.sh shows a test's warnings after its FAIL line.
+- [ ] [minor] F89 — ce05 also refuses `vars.` and `imagetools`.
+- [ ] [minor] F90 — The ACT tests close their throwaway PR on any failure after creating it.
+- [ ] [minor] F91 — The private kubeconfig is written mode 0600.
+- [ ] [minor] F92 — ce04's `present` treats `""` as absent, and refuses revisionHistoryLimit,
+      paused, imagePullSecrets, hostPID/hostIPC, ephemeralContainers.
+- [ ] [minor] F93 — c01 fails if Docker's architecture can't be read.
+- [x] F96 — fixed during verification (awk reads to the end); c07 5/5 green.
+
+### Verdict: ESCALATED
+- **Reason:**
+  - **Defects:** none open above minor. 0 confirmed blockers or majors; 16 confirmed minors
+    (F71, F73–F75, F77–F80, F85–F87, F89–F93), F96 fixed. 11 refuted this iteration.
+  - **What stops a GO:** iteration 3 is the cap, and two things are open that only the user
+    can unblock.
+    - **F88 is INCONCLUSIVE.** It settles only in an ACT=1 run.
+    - **Some acceptance tests aren't green yet:** `08` (protection), and ce01/ce02/ce06
+      (ACTS; they branch from `dev`, which doesn't have `k8s/` until PR #33 merges).
+  - **Upstream cause:** none. The loop converged on the design. Every major after iteration 1
+    was in the verification harness or the docs, and none in the manifests.
+  - **The user's options:**
+    1. Merge PR #33 into `dev`, apply protection, then run the release check with ACT=1. If
+       it's green: GO with the 16 minors as tracked follow-ups (or fix some first).
+    2. Fix some or all of the minors before merging. That's a fourth pass outside this
+       loop's cap, at the user's call.
+    3. Hold.

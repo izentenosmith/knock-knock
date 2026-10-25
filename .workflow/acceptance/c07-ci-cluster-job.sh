@@ -29,7 +29,7 @@ nodes=$(grep -oE "Creating node '[^']+'" <<<"$out" | sort | tr '\n' ' ' || true)
   || fail "job cluster's k3d created '$nodes', expected one server and two agents"
 has "$out" "portmapping '8080:80' targets the loadbalancer" || fail "job cluster didn't map 8080 to the loadbalancer"
 # The images the run itself read from k8s/ are the tree's (the run checked out a merge ref).
-ran=$(awk '/k8s\/ runs:$/ {on = 1; next} on && /^  ghcr\.io\// {print $1; next} on {exit}' <<<"$out" | sort -u)
+ran=$(awk '/k8s\/ runs:$/ {on = 1; next} on && !done && /^  ghcr\.io\// {print $1; next} on {done = 1}' <<<"$out" | sort -u)
 want=$(images | sort -u)
 [ -n "$ran" ] || fail "job cluster didn't print the images it read from k8s/"
 [ "$ran" = "$want" ] || fail "job cluster ran $(tr '\n' ' ' <<<"$ran"), the tree's k8s/ has $(tr '\n' ' ' <<<"$want")"
@@ -43,7 +43,7 @@ grep -Eq '^PASS[[:space:]]*$' <<<"$out" || fail "the smoke test didn't print PAS
 
 log=$(job_log "$job")
 perms=$(awk -F'\t' '{print $3}' <<<"$log" | sed -E 's/^[^ ]+Z //' \
-  | awk '/GITHUB_TOKEN Permissions/ {on = 1; next} on && /##\[endgroup\]/ {exit} on')
+  | awk '/GITHUB_TOKEN Permissions/ {on = 1; next} on && /##\[endgroup\]/ {on = 0; done = 1} on && !done')
 [ -n "$perms" ] || fail "no GITHUB_TOKEN Permissions section in job cluster's log"
 writes=$(grep -i ': write' <<<"$perms" || true)
 [ -z "$writes" ] || fail "job cluster's token can write: $(tr '\n' ' ' <<<"$writes")"
