@@ -12,6 +12,8 @@ git -C "$ROOT" cat-file -e "$sha^{commit}" 2>/dev/null || git -C "$ROOT" fetch -
 pin=$( (git -C "$ROOT" grep -h -o -E 'knock-knock-[a-z]+:sha-[0-9a-f]{7}' "$sha" -- k8s 2>/dev/null || true) | sed 's/.*://' | sort -u)
 [ -n "$pin" ] || fail "PR #$pr's head (${sha:0:7}) has no pinned images in k8s/"
 [ "$(wc -w <<<"$pin")" -eq 1 ] || fail "PR #$pr's k8s/ pins more than one tag: $pin"
+git -C "$ROOT" diff --quiet "$sha" "${TREE:-HEAD}" -- k8s \
+  || fail "stale observation: PR #$pr's head (${sha:0:7}) has a different k8s/ from ${TREE:-HEAD}'s"
 
 run=$(ci_run "$sha" pull_request "$branch")
 IFS=$'\t' read -r job conclusion <<<"$(job_named "$run" cluster)"
@@ -21,6 +23,10 @@ IFS=$'\t' read -r job conclusion <<<"$(job_named "$run" cluster)"
 out=$(job_output "$job")
 [ -n "$out" ] || fail "can't read job cluster's output"
 has "$out" 'k3d version v5\.9\.0' || fail "job cluster didn't run k3d v5.9.0"
+for node in k3d-knock-server-0 k3d-knock-agent-0 k3d-knock-agent-1; do
+  has "$out" "Creating node '$node'" || fail "job cluster's k3d didn't create $node"
+done
+has "$out" '^[0-9]+ knocks on http://localhost:8080/api/knock$' -E || fail "job cluster's smoke didn't knock on the ingress (localhost:8080)"
 has "$out" "version $pin in every answer" || fail "job cluster's smoke didn't check version $pin"
 has "$out" 'node prefix k3d-knock- in every answer' || fail "job cluster's smoke didn't check the node prefix"
 for lang in $BACKENDS; do

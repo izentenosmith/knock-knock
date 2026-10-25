@@ -11,8 +11,8 @@ cluster
 svc=$(kc get service knock-api -o json 2>/dev/null) || fail "there's no Service knock-api"
 jq -e '.spec.selector == {"pool": "knock"}' <<<"$svc" >/dev/null \
   || fail "knock-api selects $(jq -c .spec.selector <<<"$svc"), expected exactly {\"pool\":\"knock\"}"
-jq -e '[.spec.ports[] | select(.port == 8080 and (.targetPort == 8080 or .targetPort == "8080"))] | length == 1' <<<"$svc" >/dev/null \
-  || fail "knock-api doesn't serve port 8080 → 8080: $(jq -c .spec.ports <<<"$svc")"
+jq -e '(.spec.ports | length == 1) and (.spec.ports[0] | .port == 8080 and (.targetPort == 8080 or .targetPort == "8080"))' <<<"$svc" >/dev/null \
+  || fail "knock-api doesn't serve exactly port 8080 → 8080: $(jq -c .spec.ports <<<"$svc")"
 
 pods=$(kc get pods -o json)
 services=$(kc get services -o json)

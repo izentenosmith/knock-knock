@@ -16,14 +16,14 @@ html=$(curl -fsS --max-time 5 "$INGRESS/") || fail "GET / through the ingress fa
 has "$html" '<div id="root"></div>' || fail "GET / through the ingress isn't the frontend's page"
 
 # The same smoke test, through the ingress.
-out=$(EXPECT_VERSION="$pin" EXPECT_NODE_PREFIX=k3d-knock- "$ROOT/scripts/smoke.sh" 2>&1) \
+out=$(URL="$INGRESS/api/knock" EXPECT_VERSION="$pin" EXPECT_NODE_PREFIX=k3d-knock- "$ROOT/scripts/smoke.sh" 2>&1) \
   || fail "smoke through the ingress failed: $(grep -m1 '^FAIL' <<<"$out" || tail -1 <<<"$out")"
 [ "$(tail -1 <<<"$out")" = PASS ] || fail "smoke didn't end in PASS"
 grep -qx "version $pin in every answer" <<<"$out" || fail "smoke didn't check version $pin"
 grep -qx "node prefix k3d-knock- in every answer" <<<"$out" || fail "smoke didn't check the node prefix"
 
 # Native nodes and anonymous pulls.
-if [ "$(uname -m)" = arm64 ]; then
+if [[ "$(uname -m)" =~ ^(arm64|aarch64)$ ]]; then
   archs=$(kc get nodes -o json | jq -r '[.items[].metadata.labels["kubernetes.io/arch"]] | unique | join(" ")')
   [ "$archs" = arm64 ] || fail "the nodes are '$archs', expected arm64"
 fi

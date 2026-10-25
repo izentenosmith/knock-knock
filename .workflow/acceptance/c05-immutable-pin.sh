@@ -7,7 +7,7 @@
 . "$(dirname "$0")/lib.sh"
 . "$HERE/lib-cluster.sh"
 
-images=$(manifests | jq -r '.[] | select(.kind == "Deployment") | .spec.template.spec.containers[].image' | sort)
+images=$(images | sort) # init containers included
 [ -n "$images" ] || fail "no Deployment images in k8s/"
 tag=$(pinned_tag)
 [[ "$tag" =~ ^sha-[0-9a-f]{7}$ ]] || fail "the images are pinned to '$tag', not a sha-<7> tag"

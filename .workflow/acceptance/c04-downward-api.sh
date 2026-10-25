@@ -22,7 +22,7 @@ for i in $(seq 40); do
   curl -fsS --max-time 5 "$INGRESS/api/knock" >>"$answers" || fail "knock $i got no answer"
   echo >>"$answers"
 done
-wrong=$(jq -rs --argjson n "$nodes" '.[] | select($n[.pod] != .node) | "\(.pod) said \(.node), runs on \($n[.pod] // "no such pod")"' "$answers")
+wrong=$(jq -rs --argjson n "$nodes" '.[] | select($n[.pod] == null or .node == null or $n[.pod] != .node) | "\(.pod) said \(.node), runs on \($n[.pod] // "no such pod")"' "$answers")
 [ -z "$wrong" ] || fail "answers name the wrong node: $(head -1 <<<"$wrong")"
 
 pass "POD_NAME and NODE_NAME come from the Downward API; 40 answers named their own pod's node"

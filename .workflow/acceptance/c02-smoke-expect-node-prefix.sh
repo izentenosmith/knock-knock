@@ -7,6 +7,7 @@
 . "$(dirname "$0")/lib.sh"
 
 smoke="$ROOT/scripts/smoke.sh"
+unset URL EXPECT_VERSION EXPECT_NODE_PREFIX # every case below sets exactly what it means
 before=$(mktemp)
 pids=()
 trap 'kill "${pids[@]}" 2>/dev/null || true; rm -f "$before"' EXIT
@@ -30,18 +31,24 @@ out=$(URL=$(url 18221) EXPECT_NODE_PREFIX=k3d-knock- "$smoke" 8 2>&1) \
   || fail "smoke should pass when every node starts with EXPECT_NODE_PREFIX: $(tail -1 <<<"$out")"
 grep -qx 'node prefix k3d-knock- in every answer' <<<"$out" || fail "smoke didn't report the node prefix it checked"
 
-# Given one backend answering node `local` (NODE_NAME not wired), then it fails and names node.
-for port in 18222 18223 18224; do
+# Given one backend answering node `local` (NODE_NAME not wired), or another prefix, then it
+# fails, names node and the stray value.
+for case in 18222:local 18223:k3d-other-agent-0 18224:x-k3d-knock-agent-0; do
+  port=${case%%:*} stray=${case#*:}
   if out=$(URL=$(url $port) EXPECT_NODE_PREFIX=k3d-knock- "$smoke" 8 2>&1); then
     fail "smoke passed although the nodes on $port don't all start with k3d-knock-"
   fi
-  grep -q '^FAIL: .*node' <<<"$out" || fail "the failure on $port doesn't name node: $(tail -1 <<<"$out")"
+  grep -q "^FAIL: .*node.*$stray" <<<"$out" || fail "the failure on $port doesn't name node $stray: $(tail -1 <<<"$out")"
 done
 
-# The prefix is literal: a regex-looking prefix doesn't match by accident.
-if out=$(URL=$(url 18225) EXPECT_NODE_PREFIX=k3d.knock "$smoke" 8 2>&1); then
-  fail "EXPECT_NODE_PREFIX=k3d.knock matched k3d-knock-agent-0 (read as a regex)"
-fi
+# The prefix is literal: neither a regex nor a glob reading matches by accident.
+for case in 18225:k3d.knock 18223:'k3d-*'; do
+  port=${case%%:*} prefix=${case#*:}
+  if out=$(URL=$(url $port) EXPECT_NODE_PREFIX="$prefix" "$smoke" 8 2>&1); then
+    fail "EXPECT_NODE_PREFIX='$prefix' matched the nodes on $port (not read literally)"
+  fi
+  grep -q '^FAIL: .*node' <<<"$out" || fail "the '$prefix' failure doesn't name node: $(tail -1 <<<"$out")"
+done
 
 # Given EXPECT_NODE_PREFIX set but empty (a CI typo), then it fails instead of skipping the check.
 if out=$(URL=$(url 18221) EXPECT_NODE_PREFIX= "$smoke" 8 2>&1); then
@@ -61,6 +68,16 @@ for port in 18221 18222; do
     fi
     [ "$now" = "$was" ] || fail "unset EXPECT_NODE_PREFIX changed the output (port $port, EXPECT_VERSION $ev): $(diff <(echo "$was") <(echo "$now") | head -3)"
   done
+done
+
+# Unset, failures read the same too: a version mismatch (8 knocks), and a language missing (3
+# knocks; one extra knock in between brings the fake's rotation back to the same language).
+for n in 8 3; do
+  ev=sha-other; [ "$n" = 3 ] && ev=sha-abc1234
+  now=$(URL=$(url 18221) EXPECT_VERSION=$ev "$smoke" $n 2>&1) && fail "setup: smoke should fail with $n knocks, EXPECT_VERSION=$ev"
+  [ "$n" = 8 ] || curl -fs "$(url 18221)" >/dev/null
+  was=$(URL=$(url 18221) EXPECT_VERSION=$ev bash "$before" $n 2>&1) && fail "setup: the base smoke should fail with $n knocks"
+  [ "$now" = "$was" ] || fail "unset EXPECT_NODE_PREFIX changed a failure ($n knocks): $(diff <(echo "$was") <(echo "$now") | head -3)"
 done
 
 pass "EXPECT_NODE_PREFIX is enforced as a literal prefix when set and invisible when unset"

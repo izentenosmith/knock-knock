@@ -16,6 +16,9 @@ for scope in '.permissions' '.jobs.cluster.permissions'; do
     fail "ci.yml grants packages: write at $scope"
   fi
 done
+# Nor can it push some other way: no secret, no registry login, no push, no pushing action.
+pushes=$(jq -r '.jobs.cluster | tostring | [scan("secrets\\.[A-Za-z_]+|docker (?:login|push)|build-push-action|--push|imagetools create")] | unique | join(", ")' <<<"$wf")
+[ -z "$pushes" ] || fail "the cluster job can push: $pushes"
 needs=$(jq -c '.jobs.publish.needs | if type == "string" then [.] else . end' <<<"$wf")
 [ "$needs" = '["smoke"]' ] || fail "publish needs $needs, expected only smoke"
 

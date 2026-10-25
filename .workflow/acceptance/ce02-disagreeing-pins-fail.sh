@@ -6,6 +6,7 @@
 # then closes the PR and deletes the branch. Never merged.
 # Observe only: RUN=<id of that PR's ci.yml run>.
 . "$(dirname "$0")/lib.sh"
+. "$HERE/lib-cluster.sh" # for step
 
 branch=acceptance/disagreeing-pins
 if acts; then
@@ -27,15 +28,21 @@ if acts; then
 fi
 [ -n "${RUN:-}" ] || fail "not observed yet: run with ACT=1 (pushes a throwaway PR into dev, ask first) or set RUN=<id>"
 fresh "$RUN"
+# The run must be this scenario's: a pull_request run of acceptance/disagreeing-pins, at the head of a PR into dev.
+read -r event head_branch head_sha <<<"$(gh run view -R "$REPO" "$RUN" --json event,headBranch,headSha -q '"\(.event) \(.headBranch) \(.headSha)"')"
+[ "$event $head_branch" = "pull_request acceptance/disagreeing-pins" ] || fail "run $RUN is a $event run of $head_branch, not this scenario's PR from acceptance/disagreeing-pins"
+heads=$(gh pr list -R "$REPO" --head acceptance/disagreeing-pins --base dev --state all --json headRefOid -q '.[].headRefOid')
+grep -qx "$head_sha" <<<"$heads" || fail "run $RUN's commit ${head_sha:0:7} isn't the head of a PR from acceptance/disagreeing-pins into dev"
 
 IFS=$'\t' read -r job conclusion <<<"$(job_named "$RUN" cluster)"
 [ "${conclusion:-}" = failure ] || fail "cluster concluded ${conclusion:-missing} in run $RUN, expected failure"
 out=$(job_output "$job")
 [ -n "$out" ] || fail "can't read job cluster's output"
 has "$out" 'pins disagree' -i || fail "the failure doesn't say the pins disagree"
-if has "$out" '(deployment|service|ingress)[a-z.]*/[a-z-]+ (created|configured|unchanged)' -E; then
-  fail "k8s/ was applied although its pins disagree"
-fi
+for s in "Read the one tag k8s/ pins:failure" "Apply k8s/:skipped" "Wait for the ingress:skipped" "Smoke test through the ingress:skipped"; do
+  got=$(step "$job" "${s%:*}")
+  [ "$got" = "${s##*:}" ] || fail "step '${s%:*}' concluded '${got:-missing}', expected ${s##*:}"
+done
 if acts; then [ "$STATE" = BLOCKED ] || fail "the PR's merge state was $STATE, expected BLOCKED"; fi
 
 pass "disagreeing pins failed cluster before applying (run $RUN)${STATE:+, and the PR was $STATE}"
