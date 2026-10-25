@@ -1,3 +1,4 @@
+raise RuntimeError("broken on purpose (acceptance E01)")
 import json
 import os
 import socket
