@@ -31,3 +31,6 @@ target/
 
 # Logs
 *.log
+
+# Scratch files the acceptance tests write next to themselves
+.workflow/acceptance/.*
