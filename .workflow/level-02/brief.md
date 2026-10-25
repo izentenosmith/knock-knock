@@ -125,39 +125,39 @@ confirmation**, and only after `cluster` has run green on `dev`):*
 **Acceptance criteria** (ordered — first is the tracer-bullet candidate, each one a single
 red→green slice; "verifiable at" names the earliest point it can be observed):
 
-- [ ] **Tracer bullet: same UI, now in Kubernetes.** From scratch on the Mac, the README's
+- [x] **Tracer bullet: same UI, now in Kubernetes.** From scratch on the Mac, the README's
       exact commands (create, apply, wait) give a cluster whose ingress at
       `localhost:8080` serves the UI, and `scripts/smoke.sh` with
       `EXPECT_VERSION=sha-04f74b3` and `EXPECT_NODE_PREFIX=k3d-knock-` passes with all four
       languages. The nodes are `arm64` and the images were pulled anonymously.
       *Verifiable at: the laptop, with k3d installed.*
-- [ ] **`EXPECT_NODE_PREFIX`.** Set to `k3d-knock-`, smoke passes when every `node` starts
+- [x] **`EXPECT_NODE_PREFIX`.** Set to `k3d-knock-`, smoke passes when every `node` starts
       with it and fails, naming `node`, when any answer says `local` (or another prefix).
       Set but empty fails. Unset, the output is byte-for-byte as before.
       *Verifiable at: the laptop, no cluster (fake API).*
-- [ ] **One Service over four Deployments.** In the running cluster, `knock-api` is the only
+- [x] **One Service over four Deployments.** In the running cluster, `knock-api` is the only
       Service in front of the backends, it selects exactly `pool: knock`, and its endpoints
       are four ready pods: one each from `knock-go`, `knock-python`, `knock-rust` and
       `knock-ts`. The frontend pod isn't among them.
       *Verifiable at: the laptop cluster.*
-- [ ] **Downward API.** Every backend container's `POD_NAME` comes from `metadata.name` and
+- [x] **Downward API.** Every backend container's `POD_NAME` comes from `metadata.name` and
       `NODE_NAME` from `spec.nodeName` (pod spec). Each answer's `node` names the node that
       pod is scheduled on, and its `pod` names that pod. *Verifiable at: the laptop cluster.*
-- [ ] **Immutable pin.** All five `image:` refs in `k8s/` are
+- [x] **Immutable pin.** All five `image:` refs in `k8s/` are
       `ghcr.io/izentenosmith/knock-knock-<svc>:<one sha-<7> tag>`, that tag exists on GHCR for
       every service, and the running backends report it as `version`.
       *Verifiable at: the laptop (registry) and the cluster.*
-- [ ] **Ingress routes `/` to the frontend.** `GET /` through the ingress returns the
+- [x] **Ingress routes `/` to the frontend.** `GET /` through the ingress returns the
       frontend's HTML, and `/api/knock` reaches a backend only through the frontend's nginx
       (the Ingress has no rule pointing at `knock-api`). *Verifiable at: the laptop cluster.*
-- [ ] **CI `cluster` job.** A PR into `dev` runs `cluster`, which creates k3d (pinned
+- [x] **CI `cluster` job.** A PR into `dev` runs `cluster`, which creates k3d (pinned
       `v5.9.0`, the README's flags), applies `k8s/`, and passes smoke through the ingress with
       `EXPECT_VERSION` = the pinned tag and `EXPECT_NODE_PREFIX=k3d-knock-`. It holds only
       `contents: read`. *Verifiable at: the first PR into `dev`.*
 - [ ] **Required on `dev` and `main`.** With the settings applied, `gh api` shows `cluster`
       among the required checks of both branches, with every other protection field as
       before. *Verifiable at: after settings are applied, with user confirmation.*
-- [ ] **Docs.** PLAN §3's level 02 note and the README describe the cluster as built (see
+- [x] **Docs.** PLAN §3's level 02 note and the README describe the cluster as built (see
       Desired behavior → Docs).
 
 *Edge cases:*
@@ -168,15 +168,15 @@ red→green slice; "verifiable at" names the earliest point it can be observed):
 - [ ] **Disagreeing pins fail before applying.** If the five images in `k8s/` don't share
       exactly one tag, `cluster` fails before `kubectl apply`, saying the pins disagree.
       *Verifiable at: a throwaway PR (ACTS).*
-- [ ] **Startup order converges.** If the frontend starts before the `knock-api` Service
+- [x] **Startup order converges.** If the frontend starts before the `knock-api` Service
       exists (nginx can't resolve it and exits), applying the rest of `k8s/` converges: the
       frontend restarts and smoke passes without anyone deleting a pod.
       *Verifiable at: the laptop cluster.*
-- [ ] **Nothing from later levels.** No object in `k8s/` has probes, resources,
+- [x] **Nothing from later levels.** No object in `k8s/` has probes, resources,
       `replicas` other than 1, topology spread or affinity, a ConfigMap or `DELAY_MS`, a
       LoadBalancer or NodePort Service, or a kustomization; no backend sets CORS.
       *Verifiable at: the laptop, statically.*
-- [ ] **The cluster job never publishes.** `cluster` has no `packages: write`, and
+- [x] **The cluster job never publishes.** `cluster` has no `packages: write`, and
       `publish` still needs only `smoke`. *Verifiable at: the first PR into `dev` (job
       permissions log) and in the workflow.*
 - [ ] **Level 1 still holds.** The full level 1 acceptance suite passes against the level 2
@@ -254,24 +254,24 @@ red→green slice; "verifiable at" names the earliest point it can be observed):
   - `c07` fails because the newest PR into `dev` has no `k8s/`.
   - The rest fail because there are no manifests in `k8s/` (`ce01`/`ce02`: not observed yet).
   - Level 1's 24 tests stay green.
-- [ ] Tracer bullet: same UI, now in Kubernetes → `c01-same-ui-in-kubernetes.sh`
-- [ ] `EXPECT_NODE_PREFIX` → `c02-smoke-expect-node-prefix.sh`. "Unset unchanged" is checked
+- [x] Tracer bullet: same UI, now in Kubernetes → `c01-same-ui-in-kubernetes.sh`
+- [x] `EXPECT_NODE_PREFIX` → `c02-smoke-expect-node-prefix.sh`. "Unset unchanged" is checked
       as byte-identical output to `level-01-pipeline`'s smoke.sh against the same fake.
-- [ ] One Service over four Deployments → `c03-one-service-four-deployments.sh`
-- [ ] Downward API → `c04-downward-api.sh`
-- [ ] Immutable pin → `c05-immutable-pin.sh`. The "running backends report it" half is
+- [x] One Service over four Deployments → `c03-one-service-four-deployments.sh`
+- [x] Downward API → `c04-downward-api.sh`
+- [x] Immutable pin → `c05-immutable-pin.sh`. The "running backends report it" half is
       `c01`'s `EXPECT_VERSION=<pin>`.
-- [ ] Ingress routes `/` to the frontend → `c06-ingress-routes-to-frontend.sh`
-- [ ] CI `cluster` job → `c07-ci-cluster-job.sh`
+- [x] Ingress routes `/` to the frontend → `c06-ingress-routes-to-frontend.sh`
+- [x] CI `cluster` job → `c07-ci-cluster-job.sh`
 - [ ] Required on `dev` and `main` → `08-branch-protection.sh`, level 1's protection test with
       its required-check sets updated (see Revisions).
 - Not acceptance-testable: **Docs**. It's prose, not behaviour; checked in refactor-review
   and devils-advocate.
 - [ ] Edge case: an unpublished pin fails CI loudly → `ce01-unpublished-pin-fails.sh` (ACTS)
 - [ ] Edge case: disagreeing pins fail before applying → `ce02-disagreeing-pins-fail.sh` (ACTS)
-- [ ] Edge case: startup order converges → `ce03-startup-order-converges.sh`
-- [ ] Edge case: nothing from later levels → `ce04-nothing-from-later-levels.sh`
-- [ ] Edge case: the cluster job never publishes → `ce05-cluster-never-publishes.sh` (static:
+- [x] Edge case: startup order converges → `ce03-startup-order-converges.sh`
+- [x] Edge case: nothing from later levels → `ce04-nothing-from-later-levels.sh`
+- [x] Edge case: the cluster job never publishes → `ce05-cluster-never-publishes.sh` (static:
       `publish.needs`, no `packages: write`). The runtime token half is `c07`'s.
 - [ ] Edge case (added in loop iteration 2, F39): a red smoke through the ingress turns
       `cluster` red → `ce06-red-smoke-fails-cluster.sh` (ACTS: knock-go's NODE_NAME a literal
@@ -346,3 +346,7 @@ red→green slice; "verifiable at" names the earliest point it can be observed):
     - nginx against a recreated Service.
     - Accurate opt-in and DNS wording.
     - perl listed in the README's Requirements.
+- 2026-10-25 — loop iteration 3 closed ESCALATED (see the ledger).
+  - **Green:** c01–c07, ce03–ce05 (c07 on PR #33's run 40209005241).
+  - **Open:** `08` (protection) and the ACTS tests ce01/ce02/ce06. Those need `k8s/` on `dev`
+    and the owner's go-ahead.
