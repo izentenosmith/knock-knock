@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: rust
-          image: ghcr.io/izentenosmith/knock-knock-rust:sha-04f74b3
+          image: ghcr.io/izentenosmith/knock-knock-rust:sha-0000000
           ports:
             - containerPort: 8080
           env: # the Downward API: which pod answered, and on which node
