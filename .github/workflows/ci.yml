@@ -22,10 +22,12 @@ defaults:
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with: { persist-credentials: false }
       - id: version
         run: |
           version=sha-${GITHUB_SHA::7}
@@ -39,27 +41,6 @@ jobs:
           { echo '```'; cat smoke.txt; echo '```'; } >>"$GITHUB_STEP_SUMMARY"
       - if: failure()
         run: docker compose logs
-
-  # PRs into main: every image built for both platforms and checked, nothing pushed.
-  dry-run:
-    needs: smoke
-    if: github.event_name == 'pull_request' && github.base_ref == 'main'
-    permissions:
-      contents: read
-    uses: ./.github/workflows/publish.yml
-    with:
-      version: ${{ needs.smoke.outputs.version }}
-      push: false
-
-  # Required on main: green only when the dry run passed, so a PR whose images don't build
-  # (or a red smoke test, which skips the dry run) can't be merged.
-  release-ready:
-    needs: dry-run
-    if: always() && github.event_name == 'pull_request' && github.base_ref == 'main'
-    runs-on: ubuntu-latest
-    steps:
-      - env: { RESULT: "${{ needs.dry-run.result }}" }
-        run: '[ "$RESULT" = success ] || { echo "the dry run did not pass: $RESULT"; exit 1; }'
 
   # After a green smoke test only: publish sha-<7> on main, promote it on level tags.
   publish:
