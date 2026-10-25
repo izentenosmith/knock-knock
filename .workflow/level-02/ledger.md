@@ -1470,3 +1470,26 @@ against run 40209005241 (5/5 green after F96's fix).
     2. Fix some or all of the minors before merging. That's a fourth pass outside this
        loop's cap, at the user's call.
     3. Hold.
+
+### Release check (pre-main), 2026-10-25
+Tree `a099b64` (= `dev` @ `de73a5c`'s content), `ACT=1 .workflow/acceptance/run.sh`, 17:36–18:06 -03:
+36/41 green.
+- **Level 2, all green, live:**
+  - ce01 (run 40233332085, PR #40), ce02 (run 40233596884, PR #41) and ce06 (run 40233771616,
+    PR #42): each red for its own reason and BLOCKED. Throwaway PRs closed, branches deleted.
+  - c01–c07, ce03–ce05 and 08 (with `cluster` now required) also green.
+- **F88 settled:** `merge_state` read BLOCKED in all three ACT runs. REFUTED by that observation
+  (reopens only if an ACT run reads a transient state).
+- **Level 1:** 01, 02, 03, 06, 07, e01, e02, e06, e07, e08, e10–e13 and l1–l4 green.
+- **Not green, and why:**
+  - **04, 05, e03:** stale observation. They observe `main`'s and the `dev`→`main` runs, which
+    still ran level 1's workflows. They need the level 2 release to `main`, then a re-run.
+  - **e05:** history-only by design. It refuses to act once the tag ruleset exists. Replay mode
+    (observed.env, `HISTORY=1`) passes, as at the level 1 release.
+  - **e09:**
+    - The feature half re-ran live with `ACT=1` and passed (run 40233988723 cancelled by
+      40234013819; PR #43 closed).
+    - No `main` or tag run has ever been cancelled.
+    - The overlapping-`main`-pair half can't be fresh until two `main` commits carry level 2's
+      workflows. It was replayed from level 1's pair (`HISTORY=1`). Justification:
+      `ci.yml`'s concurrency block is unchanged since `04f74b3`.
