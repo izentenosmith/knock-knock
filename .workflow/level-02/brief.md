@@ -234,8 +234,59 @@ red→green slice; "verifiable at" names the earliest point it can be observed):
   than adding the `cluster` job beside `smoke` in `ci.yml`.
 - Committing the script tests or adding a second committed test (PLAN §4 stands).
 
-**Acceptance tests** (filled in by stage 3, acceptance-tests — leave empty here):
-- **Command:** —
+**Acceptance tests** (stage 3 — tdd is done when these pass):
+- **Command:** `.workflow/acceptance/run.sh c` (level 2 only), `.workflow/acceptance/run.sh`
+  (every level: the release check). Single tests: `run.sh c03`, `run.sh ce0`.
+- **Modes:**
+  - **Local cluster** (`c01`, `c03`, `c04`, `c06`, `ce03`): one k3d cluster `knock`, created
+    by the README's exact commands and shared by these tests. The tests refuse to start if
+    a `knock` cluster exists that the harness didn't create, or if `:8080` is taken. `run.sh`
+    deletes the harness's cluster at the end (`KEEP_CLUSTER=1` keeps it). Helpers in
+    `lib-cluster.sh`; `c01` always rebuilds from scratch.
+  - **Static / local** (`c02`, `c05`, `ce04`, `ce05`): no cluster. `c05` asks GHCR.
+  - **GitHub** (`c07`, `08`, `ce01`, `ce02`): observe GitHub. **ACTS** `ce01`/`ce02` push
+    throwaway `acceptance/*` PRs into `dev` only with `ACT=1` (ask first); otherwise they
+    observe `RUN=<id>` or stay red with "not observed yet".
+- **Red reasons at creation (2026-10-25):**
+  - `c02` fails on behaviour: smoke ignores `EXPECT_NODE_PREFIX`.
+  - `ce05` fails on behaviour: `ci.yml` has no `cluster` job.
+  - `08` fails on behaviour: `dev` requires only `smoke`.
+  - `c07` fails because the newest PR into `dev` has no `k8s/`.
+  - The rest fail because there are no manifests in `k8s/` (`ce01`/`ce02`: not observed yet).
+  - Level 1's 24 tests stay green.
+- [ ] Tracer bullet: same UI, now in Kubernetes → `c01-same-ui-in-kubernetes.sh`
+- [ ] `EXPECT_NODE_PREFIX` → `c02-smoke-expect-node-prefix.sh`. "Unset unchanged" is checked
+      as byte-identical output to `level-01-pipeline`'s smoke.sh against the same fake.
+- [ ] One Service over four Deployments → `c03-one-service-four-deployments.sh`
+- [ ] Downward API → `c04-downward-api.sh`
+- [ ] Immutable pin → `c05-immutable-pin.sh`. The "running backends report it" half is
+      `c01`'s `EXPECT_VERSION=<pin>`.
+- [ ] Ingress routes `/` to the frontend → `c06-ingress-routes-to-frontend.sh`
+- [ ] CI `cluster` job → `c07-ci-cluster-job.sh`
+- [ ] Required on `dev` and `main` → `08-branch-protection.sh`, level 1's protection test with
+      its required-check sets updated (see Revisions).
+- Not acceptance-testable: **Docs**. It's prose, not behaviour; checked in refactor-review
+  and devils-advocate.
+- [ ] Edge case: an unpublished pin fails CI loudly → `ce01-unpublished-pin-fails.sh` (ACTS)
+- [ ] Edge case: disagreeing pins fail before applying → `ce02-disagreeing-pins-fail.sh` (ACTS)
+- [ ] Edge case: startup order converges → `ce03-startup-order-converges.sh`
+- [ ] Edge case: nothing from later levels → `ce04-nothing-from-later-levels.sh`
+- [ ] Edge case: the cluster job never publishes → `ce05-cluster-never-publishes.sh` (static:
+      `publish.needs`, no `packages: write`). The runtime token half is `c07`'s.
+- Edge case: level 1 still holds → no test of its own. It's the whole suite (`run.sh` with
+  no pattern), run fresh with `ACT=1` at the release check.
 
 ## Revisions
-- (empty at creation; TDD's feedback edge appends here)
+- 2026-10-25 — stage 3: acceptance tests written (12 new, all red for the reasons above).
+  - **Smoke's summary line.** With `EXPECT_NODE_PREFIX` set, smoke prints
+    `node prefix <prefix> in every answer`, mirroring `version <v> in every answer`. The
+    prefix is compared literally (not a regex, not a substring).
+  - **`08-branch-protection.sh` changed.** Its required-check sets now include `cluster`
+    (`dev`: `cluster smoke`; `main`: `cluster only-dev-to-main release-ready smoke`). Level 2
+    supersedes level 1's sets, so the single protection test asserts the current shape; every
+    other protection field it checks is unchanged.
+  - **Fixture.** `fixtures/fake_api.py` takes an optional third argument, the node names to
+    cycle (default `local`, as before).
+  - **Runner.** `run.sh`'s glob gains `c*`/`ce*`, and it calls `cluster-down.sh` last.
+  - **`ce02` setup.** Moves only the go pin to `level-01-pipeline`, a published tag, so the run
+    fails on the disagreement, not on a pull.

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # AT-08 — dev and main are protected in the nights-watch shape: a PR is required (0 approvals),
-# admins included, no force pushes or deletions, not strict; required checks are `smoke` on dev
-# and `smoke` + `only-dev-to-main` + `release-ready` on main. Observed through the API only: attempting a real
-# direct push would put a commit on dev if protection were missing.
+# admins included, no force pushes or deletions, not strict; required checks are `smoke` and
+# `cluster` on dev, and `smoke` + `cluster` + `only-dev-to-main` + `release-ready` on main (`cluster`
+# joined at level 2). Observed through the API only: attempting a real direct push would put a
+# commit on dev if protection were missing.
 . "$(dirname "$0")/lib.sh"
 
 expect() { # branch, required checks (sorted, space-separated)
@@ -16,7 +17,7 @@ expect() { # branch, required checks (sorted, space-separated)
   got=$(jq -r '[.required_status_checks.contexts[]] | sort | join(" ")' <<<"$p")
   [ "$got" = "$2" ] || fail "$1 requires checks '$got', expected '$2'"
 }
-expect dev "smoke"
-expect main "only-dev-to-main release-ready smoke"
+expect dev "cluster smoke"
+expect main "cluster only-dev-to-main release-ready smoke"
 
 pass "dev and main are protected like nights-watch"
