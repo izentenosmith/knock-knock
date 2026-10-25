@@ -104,19 +104,22 @@ knock-knock/
 ├── backends/
 │   ├── go/          main.go, go.mod, Dockerfile
 │   ├── python/      main.py, Dockerfile
-│   ├── rust/        src/main.rs, Cargo.toml, Dockerfile
+│   ├── rust/        src/main.rs, Cargo.toml, Cargo.lock, Dockerfile
 │   └── ts/          server.ts, package.json, Dockerfile
 ├── frontend/        Vite + React, nginx.conf, Dockerfile
 ├── compose.yaml     level 0 local run
 ├── scripts/
 │   ├── smoke.sh         fire N knocks, assert all 4 langs answered + contract fields present
+│   ├── build-image.sh   build one image once, check it, copy the same digest to GHCR (CI)
 │   ├── check-image.sh   start one backend image, check its lang and version (CI)
 │   ├── image-digest.sh  digest of an image tag, or nothing if the registry says it's missing (CI)
 │   └── promote.sh       give a published image its level tag, same digest (CI)
 ├── k8s/             plain YAML from level 2; kustomize base/overlays from level 10
 ├── .github/workflows/
 ├── PLAN.md
-└── README.md
+├── README.md
+├── LICENSE
+└── .gitignore
 ```
 
 ---
@@ -162,29 +165,37 @@ The rotation is perfect only with `worker_processes 1`: each nginx worker keeps
 its own round-robin counter, and with the default `auto` (one worker per CPU)
 the first knocks all land on the same backend.
 
-**01 — pipeline.** GitHub Actions, three workflows. `publish.yml` only ever
-runs when `ci.yml` calls it, so the pipeline pushes nothing without a green
-smoke test.
+**01 — pipeline.** GitHub Actions, four workflows. `publish.yml` only ever
+runs when another workflow calls it, and only `ci.yml`'s call (after a green
+smoke test) can push.
 - `ci.yml` runs on pushes to `dev` and `main`, on `level-*` tags, and on PRs into
   `dev` and `main`. Its `smoke` job runs the quickstart:
   `docker compose up --build --wait`, then `scripts/smoke.sh` with
   `EXPECT_VERSION=sha-<7>` (on PRs, `<7>` comes from GitHub's test merge commit).
-  On PRs into `main`, its `dry-run` job calls `publish.yml` without pushing, and
-  `release-ready` is green only if that dry run passed. On `main` and `level-*`
-  tags, its `publish` job calls `publish.yml` for real.
-- `publish.yml` (reusable) builds the five images as a matrix, for `linux/amd64`
-  and `linux/arm64` (QEMU), and pushes `ghcr.io/izentenosmith/knock-knock-<svc>:sha-<7>`
-  on `main`. `VERSION` = `sha-<7>`. Each backend's amd64 image is started and
-  checked (`scripts/check-image.sh`) before anything is pushed. Only the
-  `publish` job's token can write packages.
+  On `main` and `level-*` tags, its `publish` job calls `publish.yml` for real.
+- `dry-run.yml` runs only on PRs into `main` (also when a PR's base is changed to
+  `main`): it calls `publish.yml` without pushing, and `release-ready` is green
+  only if that dry run passed. No other run ever produces a `release-ready`
+  check, so nothing else can stand in for it.
+- `publish.yml` (reusable) builds the five images as a matrix
+  (`scripts/build-image.sh`): each image is built once, for `linux/amd64` and
+  `linux/arm64` (QEMU), into a registry on the runner; each backend's amd64
+  image is started from there and checked (`scripts/check-image.sh`); then, on
+  `main`, that exact image is copied to
+  `ghcr.io/izentenosmith/knock-knock-<svc>:sha-<7>` (same digest). `VERSION` =
+  `sha-<7>`. Each backend is checked before *it* is pushed; the images are
+  pushed independently, so a failed one leaves the others published, and a
+  re-run finishes the rest. Only the `publish` job's token can write packages.
 - `only-dev-to-main.yml` runs only on PRs into `main` (also when a PR's base is
   changed to `main`) and fails unless the head is this repo's `dev`.
 - Tags are **immutable** in the registry too. A `sha-<7>` that already exists is
   never rebuilt (re-running a run is safe); one built from another commit stops
   the run. A `level-*` tag doesn't build at all: `scripts/promote.sh` retags the
   `sha-<7>` that `main` published (waiting for it if `main` is still
-  publishing), so both names share one digest. A level tag on a commit that
-  isn't on `main`, or not named `level-NN-<slug>`, fails before any image changes.
+  publishing), so both names share one digest. A level tag on anything but one
+  of `main`'s own merge commits, or not named `level-NN-<slug>`, fails before any
+  image changes. A tag run uses the tagged commit's workflows, so this holds for
+  commits released with this pipeline.
 - `dev` and `main` are protected: PRs only, with `smoke` required (and
   `only-dev-to-main` and `release-ready` on `main`). A ruleset stops `level-*`
   tags from being moved or deleted. Merge `dev` into `main` with a merge commit,

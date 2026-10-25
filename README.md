@@ -27,7 +27,8 @@ docker compose up --build
 ```
 
 Open [localhost:8080](http://localhost:8080), then knock: on Compose the
-answers rotate go → python → rust → ts, perfectly. In another terminal:
+answers rotate through all four languages in a fixed order (whatever order
+Docker's DNS listed them in when nginx started), perfectly. In another terminal:
 
 ```bash
 scripts/smoke.sh
@@ -40,7 +41,7 @@ prints the tally. Needs `curl` and `jq`. `URL=…` knocks somewhere else, and
 with a version:
 
 ```bash
-VERSION=sha-3f9c2a1 docker compose up --build -d
+VERSION=sha-3f9c2a1 docker compose up --build --wait -d
 ```
 
 ```bash
@@ -105,18 +106,20 @@ git checkout level-03-load-balancing
 
 ```
 feature ──PR──▶ dev ──PR (merge commit)──▶ main ──▶ ghcr.io/…:sha-<7> ──tag──▶ :level-NN-…
-          smoke        smoke, dry run,                 publish                  promote
-                       release-ready, only-dev-to-main
+          smoke        smoke, release-ready (dry run),  publish                  promote
+                       only-dev-to-main
 ```
 
 1. Work on a branch and open a PR into `dev`. CI runs the smoke test.
-2. Open a PR from `dev` into `main`. CI adds a dry run: all five images are
-   built for both platforms and each backend is started and checked, but nothing
-   is pushed. `release-ready` (required) is green only if the dry run passed.
-   Merge it with a **merge commit**.
+2. Open a PR from `dev` into `main`. A dry run (`dry-run.yml`) builds all five
+   images for both platforms and starts and checks each backend, but pushes
+   nothing. `release-ready` (required) is green only if this PR's own dry run
+   passed; nothing else can produce that check. Merge it with a **merge commit**.
 3. CI on `main` publishes `ghcr.io/izentenosmith/knock-knock-<svc>:sha-<7>` for
-   all five images, for `linux/amd64` and `linux/arm64`. Each backend is started
-   and checked for its `version` before it is pushed.
+   all five images, for `linux/amd64` and `linux/arm64`. Each image is built
+   once into a registry on the runner; each backend is started from there and
+   checked for its `version`, and only then is that exact image (same digest)
+   copied to GHCR.
 4. The packages come out **public**: published by this public repo's workflow,
    they take the repo's visibility, so anyone (and k3d) can pull without logging
    in. If one ever shows up private, switch it once on GitHub: the package →
@@ -134,9 +137,11 @@ feature ──PR──▶ dev ──PR (merge commit)──▶ main ──▶ gh
    ```
 
    CI gives the same images that tag (same digest, no rebuild). If `main` is
-   still publishing that commit, the promotion waits for it. A tag on a commit
-   that isn't on `main`, or that doesn't look like `level-NN-<slug>`, fails
-   without touching any image.
+   still publishing that commit, the promotion waits for it. A tag on anything
+   but one of `main`'s own merge commits, or that doesn't look like
+   `level-NN-<slug>`, fails without touching any image. (A tag run uses the
+   workflows of the tagged commit, so these checks hold for commits released
+   with this pipeline; always tag `origin/main`'s newest merge commit.)
 
 The pipeline never overwrites a published tag: re-running a run skips what is
 already published, and promotion refuses to move a level tag. (Anyone with
