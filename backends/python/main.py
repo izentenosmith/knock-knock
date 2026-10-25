@@ -35,7 +35,7 @@ class Handler(BaseHTTPRequestHandler):
             served += 1
             n = served
         sig = {
-            "lang": "python", "version": VERSION, "pod": POD, "node": NODE,
+            "lang": "py", "version": VERSION, "pod": POD, "node": NODE,
             "pod_started": STARTED, "served": n, "received_at": received,
             "responded_at": now(), "took_us": (time.perf_counter_ns() - t0) // 1000,
         }
