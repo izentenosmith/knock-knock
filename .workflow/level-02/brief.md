@@ -290,3 +290,8 @@ red→green slice; "verifiable at" names the earliest point it can be observed):
   - **Runner.** `run.sh`'s glob gains `c*`/`ce*`, and it calls `cluster-down.sh` last.
   - **`ce02` setup.** Moves only the go pin to `level-01-pipeline`, a published tag, so the run
     fails on the disagreement, not on a pull.
+- 2026-10-25 — stage 4 (feedback edge): `c02` compared smoke's output against
+  `level-01-pipeline`'s smoke.sh. That version predates level 1's iteration-2 fix, which
+  added the `version … in every answer` line, so "as before" would have meant a smoke older
+  than the one level 2 changes. "As before" is the smoke at level 2's base, `04f74b3` (the
+  newest level-1 release). The criterion is unchanged; the test's baseline is corrected.

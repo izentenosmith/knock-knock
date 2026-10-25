@@ -2,7 +2,7 @@
 # C02 — EXPECT_NODE_PREFIX: set to k3d-knock-, the smoke test passes when every answer's `node`
 # starts with it and fails, naming `node`, when any answer says `local` or another prefix (a
 # literal prefix: not a substring, not a regex). Set but empty fails. Unset, its output is
-# byte-for-byte the level-1 smoke test's (with and without EXPECT_VERSION).
+# byte-for-byte the smoke test level 2 started from (04f74b3) (with and without EXPECT_VERSION).
 # Boundary: scripts/smoke.sh as a subprocess; the stack behind it is faked (fixtures/fake_api.py).
 . "$(dirname "$0")/lib.sh"
 
@@ -10,7 +10,7 @@ smoke="$ROOT/scripts/smoke.sh"
 before=$(mktemp)
 pids=()
 trap 'kill "${pids[@]}" 2>/dev/null || true; rm -f "$before"' EXIT
-git -C "$ROOT" show level-01-pipeline:scripts/smoke.sh >"$before"
+git -C "$ROOT" show 04f74b3:scripts/smoke.sh >"$before" # level 2's base: the newest level-1 release
 
 serve() { python3 -I "$HERE/fixtures/fake_api.py" "$@" & pids+=($!); }
 serve 18221 sha-abc1234 k3d-knock-agent-0,k3d-knock-agent-1,k3d-knock-server-0
