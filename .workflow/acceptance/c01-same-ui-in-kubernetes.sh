@@ -23,7 +23,7 @@ grep -qx "version $pin in every answer" <<<"$out" || fail "smoke didn't check ve
 grep -qx "node prefix k3d-knock- in every answer" <<<"$out" || fail "smoke didn't check the node prefix"
 
 # Native nodes and anonymous pulls.
-if [[ "$(uname -m)" =~ ^(arm64|aarch64)$ ]]; then
+if [[ "$(docker info -f '{{.Architecture}}')" =~ ^(arm64|aarch64)$ ]]; then # the engine's, not the shell's
   archs=$(kc get nodes -o json | jq -r '[.items[].metadata.labels["kubernetes.io/arch"]] | unique | join(" ")')
   [ "$archs" = arm64 ] || fail "the nodes are '$archs', expected arm64"
 fi

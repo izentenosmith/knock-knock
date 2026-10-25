@@ -1104,3 +1104,31 @@ on the delegates' evidence; no verification delegates.
     but unobserved (the ACT run). 7 refuted this iteration, 0 INCONCLUSIVE.
   - Iteration 2 of at most 3. Progress is monotonic: 26 slices closed.
   - Carried smells: N1, N3, N5, N6, N7, N9, N10.
+
+## Iteration 3
+
+### Closed slices
+- [x] F39 — verified statically by ce05-cluster-never-publishes.sh (mutations: `|| true` on the
+      cluster smoke step, `continue-on-error`, `shell: sh` all turn it red). The runtime half,
+      ce06-red-smoke-fails-cluster.sh, waits for the ACT run.
+- [x] F40 — verified by lib-cluster.sh: `kc` uses only `.cluster-kubeconfig` from
+      `k3d kubeconfig get knock`, and `owned()` requires it. The full local suite ran through it.
+- [x] F41 — verified by review of the pin check (repository regex, wording)
+- [x] F42 — verified by review: the dump runs `docker ps -a` and `k3d node list` first
+- [x] F43 — verified by review: all-namespaces events, describe, ingress/svc/endpointslices,
+      Traefik's log
+- [x] F44 — verified by review: job 25 min against about 14 min of bounded steps; k3d download
+      `--max-time 120`
+- [x] F45 — verified locally: the container-only filter on the k3d cluster prints the five images
+- [x] F46 — verified by review: explicit errors for no containers and an empty image
+- [x] F47 — verified locally: the `k8s/ runs:` output (bash 3.2 and 5)
+- [x] F61 — verified by c07-ci-cluster-job.sh (compares the printed images with the tree's), on
+      the next run
+- [x] F38, F49, F50, F51, F52, F53, F56, F57, F58 — verified by review of PLAN.md and README.md
+- [x] F59 — verified by ce05 (mutation: `secrets['GHCR_PAT']` turns it red)
+- [x] F60 — verified by c07 (exact node lines plus the loadbalancer port mapping), on the next run
+- [x] F62 — verified by review of ce03's trap
+- [x] F63, F64, F69 — verified by ce04 (rewritten: `present`, volumes, scanned directories must exist)
+- [x] F65 — verified by lib-cluster.sh `wait_ready` (fails on no or unlistable Deployments)
+- [x] F66 — verified by `bind_run`/`merge_state` in lib-cluster.sh, used by ce01/ce02/ce06
+- [x] F67 — verified by c01 (Docker's architecture), green locally

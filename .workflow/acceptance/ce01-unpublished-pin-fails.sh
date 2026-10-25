@@ -6,7 +6,7 @@
 # opens a draft PR into dev, waits for CI, then closes the PR and deletes the branch. Never merged.
 # Observe only: RUN=<id of that PR's ci.yml run>.
 . "$(dirname "$0")/lib.sh"
-. "$HERE/lib-cluster.sh" # for step
+. "$HERE/lib-cluster.sh" # for step, bind_run, merge_state
 
 branch=acceptance/unpublished-pin
 if acts; then
@@ -21,17 +21,12 @@ if acts; then
   PR=$(gh pr create -R "$REPO" --base dev --head "$branch" --draft --title "acceptance CE01: unpublished pin (do not merge)" --body "Throwaway PR for acceptance test CE01." | grep -Eo '[0-9]+$')
   RUN=$(wait_run "$sha" pull_request)
   gh pr ready -R "$REPO" "$PR" >/dev/null
-  sleep 5
-  STATE=$(gh pr view -R "$REPO" "$PR" --json mergeStateStatus -q .mergeStateStatus)
+  STATE=$(merge_state "$PR")
   gh pr close -R "$REPO" "$PR" --delete-branch >/dev/null
 fi
 [ -n "${RUN:-}" ] || fail "not observed yet: run with ACT=1 (pushes a throwaway PR into dev, ask first) or set RUN=<id>"
 fresh "$RUN"
-# The run must be this scenario's: a pull_request run of acceptance/unpublished-pin, at the head of a PR into dev.
-read -r event head_branch head_sha <<<"$(gh run view -R "$REPO" "$RUN" --json event,headBranch,headSha -q '"\(.event) \(.headBranch) \(.headSha)"')"
-[ "$event $head_branch" = "pull_request acceptance/unpublished-pin" ] || fail "run $RUN is a $event run of $head_branch, not this scenario's PR from acceptance/unpublished-pin"
-heads=$(gh pr list -R "$REPO" --head acceptance/unpublished-pin --base dev --state all --json headRefOid -q '.[].headRefOid')
-grep -qx "$head_sha" <<<"$heads" || fail "run $RUN's commit ${head_sha:0:7} isn't the head of a PR from acceptance/unpublished-pin into dev"
+bind_run "$RUN" "$branch"
 
 IFS=$'\t' read -r job conclusion <<<"$(job_named "$RUN" cluster)"
 [ "${conclusion:-}" = failure ] || fail "cluster concluded ${conclusion:-missing} in run $RUN, expected failure"

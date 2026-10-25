@@ -9,7 +9,12 @@ cluster
 pin=$(pinned_tag)
 # A failed run can leave a frontend whose nginx holds a dead knock-api address (it resolves once,
 # at startup): never leave that behind for the next test to reuse.
-trap 'status=$?; [ "$status" -eq 0 ] || "$HERE/cluster-down.sh" >/dev/null; exit "$status"' EXIT
+trap 'status=$?
+  if [ "$status" -ne 0 ]; then
+    if [ -n "${KEEP_CLUSTER:-}" ]; then echo "KEEP_CLUSTER: kept the cluster, but it may be broken; delete it before the next run (./cluster-down.sh)" >&2
+    else "$HERE/cluster-down.sh" >/dev/null; fi
+  fi
+  exit "$status"' EXIT
 
 # Given an empty namespace, apply only the frontend Deployment (the one without pool: knock).
 kc delete -f "$K8S" --wait=true >/dev/null 2>&1 || true

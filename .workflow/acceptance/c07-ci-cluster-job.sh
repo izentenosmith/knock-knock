@@ -5,6 +5,7 @@
 # answering. Its token holds contents: read and nothing that writes.
 # Given: a PR into dev (PR=<number>, default: the newest one) whose head carries k8s/.
 . "$(dirname "$0")/lib.sh"
+. "$HERE/lib-cluster.sh" # for images
 
 read -r pr sha branch <<<"$(pick_pr dev)"
 [ -n "${sha:-}" ] || fail "no PR into dev yet, so no CI run to observe"
@@ -23,9 +24,15 @@ IFS=$'\t' read -r job conclusion <<<"$(job_named "$run" cluster)"
 out=$(job_output "$job")
 [ -n "$out" ] || fail "can't read job cluster's output"
 has "$out" 'k3d version v5\.9\.0' || fail "job cluster didn't run k3d v5.9.0"
-for node in k3d-knock-server-0 k3d-knock-agent-0 k3d-knock-agent-1; do
-  has "$out" "Creating node '$node'" || fail "job cluster's k3d didn't create $node"
-done
+nodes=$(grep -oE "Creating node '[^']+'" <<<"$out" | sort | tr '\n' ' ' || true)
+[ "$nodes" = "Creating node 'k3d-knock-agent-0' Creating node 'k3d-knock-agent-1' Creating node 'k3d-knock-server-0' " ] \
+  || fail "job cluster's k3d created '$nodes', expected one server and two agents"
+has "$out" "portmapping '8080:80' targets the loadbalancer" || fail "job cluster didn't map 8080 to the loadbalancer"
+# The images the run itself read from k8s/ are the tree's (the run checked out a merge ref).
+ran=$(awk '/k8s\/ runs:$/ {on = 1; next} on && /^  ghcr\.io\// {print $1; next} on {exit}' <<<"$out" | sort -u)
+want=$(images | sort -u)
+[ -n "$ran" ] || fail "job cluster didn't print the images it read from k8s/"
+[ "$ran" = "$want" ] || fail "job cluster ran $(tr '\n' ' ' <<<"$ran"), the tree's k8s/ has $(tr '\n' ' ' <<<"$want")"
 has "$out" '^[0-9]+ knocks on http://localhost:8080/api/knock$' -E || fail "job cluster's smoke didn't knock on the ingress (localhost:8080)"
 has "$out" "version $pin in every answer" || fail "job cluster's smoke didn't check version $pin"
 has "$out" 'node prefix k3d-knock- in every answer' || fail "job cluster's smoke didn't check the node prefix"

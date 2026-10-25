@@ -5,4 +5,4 @@
 . "$HERE/lib-cluster.sh"
 
 if owned; then k3d cluster delete "$CLUSTER" >/dev/null 2>&1 && echo "deleted the test cluster $CLUSTER"; fi
-rm -f "$OWNED"
+rm -f "$OWNED" "$KUBECFG"

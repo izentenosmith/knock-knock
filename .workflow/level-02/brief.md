@@ -273,6 +273,9 @@ red→green slice; "verifiable at" names the earliest point it can be observed):
 - [ ] Edge case: nothing from later levels → `ce04-nothing-from-later-levels.sh`
 - [ ] Edge case: the cluster job never publishes → `ce05-cluster-never-publishes.sh` (static:
       `publish.needs`, no `packages: write`). The runtime token half is `c07`'s.
+- [ ] Edge case (added in loop iteration 2, F39): a red smoke through the ingress turns
+      `cluster` red → `ce06-red-smoke-fails-cluster.sh` (ACTS: knock-go's NODE_NAME a literal
+      `local`; `smoke` stays green, `cluster` red, PR BLOCKED). Static half in `ce05`.
 - Edge case: level 1 still holds → no test of its own. It's the whole suite (`run.sh` with
   no pattern), run fresh with `ACT=1` at the release check.
 
@@ -325,3 +328,21 @@ red→green slice; "verifiable at" names the earliest point it can be observed):
     - ce03 checks nginx's own error and ignores terminating pods.
     - The cluster reuse path prunes and waits for rollouts.
     - The harness requires `nc`.
+- 2026-10-25 — loop iteration 2 → 3 (F38–F69):
+  - **New edge-case criterion.** A red smoke through the ingress fails `cluster` (ce06,
+    ACTS), and ce05 refuses failure-tolerating settings.
+  - **CI pin check.** Reads container images only, prints them (`k8s/ runs:`), and requires
+    `ghcr.io/izentenosmith/knock-knock-<name>`. Publication is left to the pull (ce01).
+  - **Job.** The timeout is 25 min, and the dump adds Docker/k3d state, all namespaces and
+    Traefik's log.
+  - **Harness.**
+    - kubectl only through a k3d-written private kubeconfig.
+    - c07 binds to the printed images, exact nodes and the loadbalancer mapping.
+    - ce01/ce02/ce06 share `bind_run`/`merge_state`.
+    - ce04 treats empty values as absent, and scans volumes and CORS in
+      backends/frontend/k8s.
+  - **Docs.**
+    - Release 2's contents and the level tag's `version`.
+    - nginx against a recreated Service.
+    - Accurate opt-in and DNS wording.
+    - perl listed in the README's Requirements.
