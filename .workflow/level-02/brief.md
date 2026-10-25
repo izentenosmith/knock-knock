@@ -295,3 +295,33 @@ red→green slice; "verifiable at" names the earliest point it can be observed):
   added the `version … in every answer` line, so "as before" would have meant a smoke older
   than the one level 2 changes. "As before" is the smoke at level 2's base, `04f74b3` (the
   newest level-1 release). The criterion is unchanged; the test's baseline is corrected.
+- 2026-10-25 — loop iteration 1 → 2 (remediation slices from `.workflow/level-02/ledger.md`):
+  - **CI shape (F4/F5/F13–F16).** `cluster` creates the cluster first, bounded at 5 min with
+    a step timeout so a stall still fails and dumps. Then it reads the pin from
+    `kubectl apply --dry-run=client -f k8s/` (every file kubectl reads, parsed, init
+    containers included). Untagged or digest images fail, as do disagreeing pins and a
+    non-`sha-<7>` pin, all before the apply step.
+  - **Step names are part of the check-name contract.** `Create the cluster`,
+    `Read the one tag k8s/ pins`, `Apply k8s/`, `Wait for the ingress` and
+    `Smoke test through the ingress` are read by ce01/ce02 through the job's step
+    conclusions. Renaming one turns those tests red.
+  - **Failure dump (F12).** Adds every namespace's pods, the Ingress/Services/EndpointSlices,
+    events and previous container logs.
+  - **Docs (F1–F3, F19, F22, F23).**
+    - The README's smoke command no longer names a pin, the wait matches CI's, and the bump
+      uses `perl`.
+    - A level that changes app code is tagged on its pin-bump release.
+    - Smoke's default checks must keep passing against the pinned images (new checks are
+      opt-in until the pin moves).
+  - **Harness.**
+    - c07 requires the observed PR head's `k8s/` to equal the tree's, k3d's three
+      `Creating node` lines and smoke's `knocks on http://localhost:8080/api/knock`.
+    - ce01/ce02 read step conclusions and bind RUN to their own branch's PR into `dev`.
+    - ce05 refuses secrets and pushes in `cluster`.
+    - ce04 covers more later-level fields and library CORS.
+    - c02 adds glob/value/failure-output cases.
+    - c03 requires exactly one port.
+    - c04 flags unknown pods.
+    - ce03 checks nginx's own error and ignores terminating pods.
+    - The cluster reuse path prunes and waits for rollouts.
+    - The harness requires `nc`.
