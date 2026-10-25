@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Fire N knocks at the API, check the contract, print the tally.
 # Usage: scripts/smoke.sh [N]   (URL=... to knock somewhere else,
-#                               EXPECT_VERSION=... to require that version in every answer)
+#                               EXPECT_VERSION=... to require that version in every answer,
+#                               EXPECT_NODE_PREFIX=... to require every node to start with it)
 set -euo pipefail
 
 N=${1:-40}
@@ -35,8 +36,15 @@ if [ -n "${EXPECT_VERSION+set}" ]; then
   [ "$versions" = "$EXPECT_VERSION" ] || fail "expected version $EXPECT_VERSION, got $versions"
 fi
 
+if [ -n "${EXPECT_NODE_PREFIX+set}" ]; then
+  [ -n "$EXPECT_NODE_PREFIX" ] || fail "EXPECT_NODE_PREFIX is set but empty"
+  strays=$(jq -rs --arg p "$EXPECT_NODE_PREFIX" 'map(.node | tostring | select(startswith($p) | not)) | unique | join(", ")' "$answers")
+  [ -z "$strays" ] || fail "expected every node to start with $EXPECT_NODE_PREFIX, got $strays"
+fi
+
 echo "$N knocks on $URL"
 [ -z "${EXPECT_VERSION+set}" ] || echo "version $EXPECT_VERSION in every answer"
+[ -z "${EXPECT_NODE_PREFIX+set}" ] || echo "node prefix $EXPECT_NODE_PREFIX in every answer"
 jq -rs 'group_by(.lang)[] | "  \(.[0].lang)\t\(length)"' "$answers"
 echo "by pod"
 jq -rs 'group_by(.pod)[] | "  \(.[0].lang)\t\(.[0].pod)\t\(length)"' "$answers"

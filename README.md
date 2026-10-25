@@ -15,9 +15,11 @@ watching them behave.
 
 ## Status
 
-✅ **Level 1 done:** every PR is built and smoke-tested by GitHub Actions, and
-each release to `main` publishes multi-arch images to GHCR. Level 0 (the four
-backends, the React UI and Docker Compose) is underneath. Levels 2 and up are
+✅ **Level 2 done:** the same UI runs in a local k3d cluster: four Deployments
+behind one Service, an Ingress in front, and the published GHCR images. Every
+PR is smoke-tested on Compose and through a k3d ingress in GitHub Actions, and
+each release to `main` publishes multi-arch images (level 1). Level 0 (the four
+backends, the React UI and Docker Compose) is underneath. Levels 3 and up are
 still to come. See [PLAN.md](PLAN.md).
 
 ## Quickstart
@@ -47,6 +49,53 @@ VERSION=sha-3f9c2a1 docker compose up --build --wait -d
 ```bash
 EXPECT_VERSION=sha-3f9c2a1 scripts/smoke.sh
 ```
+
+## Kubernetes (k3d)
+
+The same UI from the published images, in a three-node cluster on your laptop.
+Stop compose first (`docker compose down`): both use port 8080.
+
+```bash
+k3d cluster create knock --agents 2 -p "8080:80@loadbalancer"
+```
+
+```bash
+kubectl apply -f k8s/
+```
+
+There are no probes yet (level 4), so wait for the Deployments, then for the
+ingress to answer (the same wait CI uses). If `kubectl wait` times out on the
+first, slow image pull, run it again:
+
+```bash
+kubectl wait --for=condition=Available deployment --all --timeout=120s && curl -fsS -o /dev/null --retry 30 --retry-delay 2 --retry-all-errors --max-time 5 localhost:8080/api/knock
+```
+
+Open [localhost:8080](http://localhost:8080): each tile now names a real pod
+and node. The same smoke test runs through the ingress. `EXPECT_NODE_PREFIX`
+requires every `node` to start with it, so it fails if `NODE_NAME` isn't wired,
+or if you're knocking on compose:
+
+```bash
+EXPECT_NODE_PREFIX=k3d-knock- scripts/smoke.sh
+```
+
+`k8s/` pins every image to one `sha-<7>` that `main` already published, the
+`version` the backends report (CI's `cluster` job also sets `EXPECT_VERSION` to
+it). To move to a newer release, open a PR into `dev` that changes the five
+pins, for example to `sha-1a2b3c4`:
+
+```bash
+NEW=sha-1a2b3c4 perl -pi -e 's/(knock-knock-[a-z]+):sha-[0-9a-f]{7}/$1:$ENV{NEW}/' k8s/*.yaml
+```
+
+When you're done:
+
+```bash
+k3d cluster delete knock
+```
+
+## Images
 
 Same app, very different images (arm64, `docker images`):
 
@@ -106,11 +155,14 @@ git checkout level-03-load-balancing
 
 ```
 feature ──PR──▶ dev ──PR (merge commit)──▶ main ──▶ ghcr.io/…:sha-<7> ──tag──▶ :level-NN-…
-          smoke        smoke, release-ready (dry run),  publish                  promote
-                       only-dev-to-main
+          smoke,       smoke, release-ready (dry run),  publish                  promote
+          cluster      only-dev-to-main, cluster
 ```
 
-1. Work on a branch and open a PR into `dev`. CI runs the smoke test.
+1. Work on a branch and open a PR into `dev`. CI runs the smoke test twice, both
+   required: `smoke` on Compose (this commit's images), and `cluster` through the
+   ingress of a k3d cluster running `k8s/` as committed (the published images it
+   pins).
 2. Open a PR from `dev` into `main`. A dry run (`dry-run.yml`) builds all five
    images for both platforms and starts and checks each backend, but pushes
    nothing. `release-ready` (required) is green only if this PR's own dry run
@@ -126,7 +178,12 @@ feature ──PR──▶ dev ──PR (merge commit)──▶ main ──▶ gh
    *Package settings* → *Change visibility* → **Public**.
 5. Tag `main`'s merge commit, by name, not whatever you have checked out, and
    push only that tag. Level tags can never be moved or deleted, so wait for
-   step 3's run to be green first, and check the commit:
+   step 3's run to be green first, and check the commit. A level that changes
+   anything baked into an image ships in two releases: the code, then a release
+   that holds only the PR moving `k8s/`'s pin to the code release's `sha-<7>`
+   (plus the `k8s/` and CI changes that need the new images). Tag the second one,
+   so that replaying the tag deploys that level's code. Its level-tagged images
+   are the same code, but report the second release's `sha-<7>` as `version`.
 
    ```bash
    git fetch origin && git log -1 --oneline origin/main
@@ -160,7 +217,7 @@ curl localhost:8081/api/knock
 ## Requirements
 
 Docker, `curl` and `jq` (level 0 and 1); [k3d](https://k3d.io) and `kubectl`
-from level 2. Go, Python, Rust and Node are only needed to run a backend outside
+from level 2 (and `perl` for the pin bump). Go, Python, Rust and Node are only needed to run a backend outside
 a container.
 
 ## License
