@@ -13,9 +13,10 @@ kc() { kubectl --context "k3d-$CLUSTER" "$@"; }
 
 # Every object in k8s/ as one JSON array (read as YAML, the way kubectl reads the directory).
 manifests() {
-  ls "$K8S"/*.yaml "$K8S"/*.yml "$K8S"/*.json >/dev/null 2>&1 || fail "no manifests in k8s/"
-  ruby -ryaml -rjson -e 'puts JSON.generate(ARGV.flat_map { |f| YAML.load_stream(File.read(f)) }.compact)' \
-    $(ls "$K8S"/*.yaml "$K8S"/*.yml "$K8S"/*.json 2>/dev/null)
+  local files=() f
+  for f in "$K8S"/*.yaml "$K8S"/*.yml "$K8S"/*.json; do [ -f "$f" ] && files+=("$f"); done
+  [ "${#files[@]}" -gt 0 ] || fail "no manifests in k8s/"
+  ruby -ryaml -rjson -e 'puts JSON.generate(ARGV.flat_map { |f| YAML.load_stream(File.read(f)) }.compact)' "${files[@]}"
 }
 
 # The one tag all five images in k8s/ share; fails if they don't share exactly one.
