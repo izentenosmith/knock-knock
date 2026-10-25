@@ -49,7 +49,7 @@ New:
 Iteration 1: three read-only delegates, one per surface: product (P: k8s/, the `cluster` job,
 smoke), test integrity (T: the c/ce harness), docs and back-compat (D). Sources are given as
 delegate+number. No refuted findings carried (first iteration). Ranked most severe first.
-F8 also covers D-swept "port collision" (P8 was folded in as F37).
+The compose/k3d port collision (P8) is F37.
 
 #### F1
 - **Target:** `cluster` as a required check, with smoke.sh shared by both jobs (P1)
