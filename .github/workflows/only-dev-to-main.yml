@@ -13,6 +13,7 @@ permissions: {}
 jobs:
   only-dev-to-main:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - env: # via env, never inline: branch and repository names are untrusted input
           HEAD: ${{ github.head_ref }}

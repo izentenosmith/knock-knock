@@ -3,7 +3,8 @@
 # "Doesn't exist" is only ever the registry's own answer: a missing tag ("<ref>: not found")
 # or a package GHCR hasn't created yet (403 on the token request). Anything else exits 1,
 # so a flaky registry never reads as "absent".
-# With --revision <sha>, an image that exists but was built from another commit exits 1 too.
+# With --revision <sha>, an image that exists but wasn't built from that commit (on every
+# platform) exits 2, so callers can tell it apart from a registry error.
 # Usage: scripts/image-digest.sh [--revision <sha>] <image:tag>
 set -euo pipefail
 
@@ -24,10 +25,14 @@ fi
 
 if [ -n "$revision" ]; then
   # .image is one config for a single-platform image, or a map of platform -> config.
-  built_from=$(jq -r '.image | if has("config") then . else [.[]][0] end | .config.Labels["org.opencontainers.image.revision"] // ""' <<<"$out")
+  if ! built_from=$(jq -r '.image | (if has("config") then [.] else [.[]] end)
+      | map(.config.Labels["org.opencontainers.image.revision"] // "") | unique | join(",")' <<<"$out" 2>&1); then
+    echo "::error::can't read the revision labels of $ref: $built_from" >&2
+    exit 1
+  fi
   if [ "$built_from" != "$revision" ]; then
     echo "::error::$ref exists but was built from revision '$built_from', not $revision" >&2
-    exit 1
+    exit 2
   fi
 fi
 jq -r .manifest.digest <<<"$out"
