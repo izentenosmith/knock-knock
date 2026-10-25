@@ -608,3 +608,499 @@ create --help` gives `--wait` true with no timeout by default). No verification 
 ### Verdict: NO-GO
 - **Reason:** 6 confirmed majors are open (F2, F3, F4, F5, F7, F8), plus 23 confirmed minors.
   8 refuted, 0 INCONCLUSIVE. Iteration 1 of at most 3. Carried smells: N1, N3, N5, N6–N10.
+
+## Iteration 2
+
+### Closed slices
+- [x] F2 — verified by review: the README's k3d smoke command no longer names a pin
+      (`grep sha-04f74b3 README.md` finds nothing); the bump changes only `k8s/`
+- [x] F3 — verified by review: PLAN 02 note and README step 5 tag a code-changing level on
+      its pin-bump release
+- [x] F7 — verified by c07-ci-cluster-job.sh (fails "stale observation" when the PR head's
+      `k8s/` differs from the tree's)
+- [x] F8 — verified by c07-ci-cluster-job.sh (requires three `Creating node` lines and
+      `knocks on http://localhost:8080/api/knock`)
+- [x] F1 — verified by review: PLAN 02 note states the default-checks rule
+- [x] F9 — verified by ce05-cluster-never-publishes.sh (mutation: a `docker push` step turns it red)
+- [x] F10 — verified by ce04-nothing-from-later-levels.sh (nginx.conf required; `cors` in sources)
+- [x] F11 — verified by the reuse path in lib-cluster.sh (`apply --prune --all`, rollout status)
+      under c03/c06 partial runs
+- [x] F12 — verified by review of the `cluster` failure step; exercised by ce01 at the ACT run
+- [x] F13 — verified by review: the pin check reads `kubectl apply --dry-run=client -f k8s/`
+- [x] F14 — verified locally: the CI pin script against the k3d cluster yields
+      `sha-04f74b3`, no bad images
+- [x] F15 — verified by review: a non-`sha-<7>` pin fails the pin check
+- [x] F16 — verified by review: `Create the cluster` has `timeout-minutes: 5`
+- [x] F19 — verified by review: PLAN 01 bullet names `cluster`
+- [x] F22 — verified by review: the README wait has CI's flags and a re-run note
+- [x] F23 — verified locally: the `perl` bump rewrites all five pins on macOS
+- [x] F26 — verified by c05-immutable-pin.sh and ce04 (init containers read, and refused)
+- [x] F27 — verified by c02-smoke-expect-node-prefix.sh (mutations: glob matching and a vague
+      message both turn it red)
+- [x] F28 — verified by c01/c02/ce03 (explicit `URL`; `unset` in c02)
+- [x] F29 — verified by c02-smoke-expect-node-prefix.sh (failure output compared)
+- [x] F30 — verified by c01-same-ui-in-kubernetes.sh (`arm64|aarch64`)
+- [x] F31 — verified by ce04-nothing-from-later-levels.sh
+- [x] F32 — verified by ce03-startup-order-converges.sh (nginx's `host not found in upstream`)
+- [x] F33 — verified by c03-one-service-four-deployments.sh
+- [x] F34 — verified by c04-downward-api.sh
+- [x] F35 — verified by lib-cluster.sh (`command -v nc` before the port check)
+- Implemented, not yet observed: F4, F5, F6 (ce01/ce02 step conclusions and run binding).
+  Their red/green needs the throwaway PRs, i.e. an `ACT=1` run (owner's confirmation).
+- c07 re-observed on the remediated tree: PR #33, run 40207453154, PASS (the k8s/ binding,
+  three nodes, the ingress URL).
+
+### Smells
+- **N1, N3, N5** — left: condition not met.
+- **N6** — left: condition not met (the four Deployments are unchanged).
+- **N7** — left: the README and CI copies of the wait are identical again (F22). No fourth
+  copy.
+- **N8** — retired as a CI concern: CI now reads the pin from kubectl's parsed objects, not
+  text. Tests still compute it independently on purpose (`pinned_tag`, c07's grep).
+- **N9, N10** — left: condition not met.
+- No new smells. Small remediation diff, inline pass.
+
+### Findings (unadjudicated)
+Iteration 2: three read-only delegates over the remediation diff `1b87eaa..HEAD`: docs/flow (D),
+CI/product (P), harness (T). The refuted F17, F18, F20, F21, F24, F25, F36, F37 weren't
+re-reported. Findings are condensed from the delegates' reports; ids are new.
+
+#### F38
+- **Target:** nginx resolve-once after a Service is recreated (D1; observed live in this
+  iteration)
+- **Claim challenged:** the docs cover how the frontend behaves when `knock-api` changes
+- **Evidence:** nginx resolves `knock-api` once. A recreated Service gets a new ClusterIP, and
+  a running frontend keeps proxying to the dead one. With no probes the pod never restarts.
+  Seen live: a frontend with 0 restarts, `/api/knock` timing out, and the Service healthy.
+  Undocumented.
+- **Breaking case:** `kubectl delete -f k8s/knock-api.yaml && kubectl apply -f k8s/` → every
+  knock fails until `kubectl rollout restart deployment/frontend`
+- **Confidence:** proven
+- **Severity hint:** major
+
+#### F39
+- **Target:** the `cluster` gate when smoke fails (T2)
+- **Claim challenged:** `cluster` is green only if smoke through the ingress passes
+- **Evidence:** no test turns `cluster` red through a smoke failure. c07 sees green, ce01/ce02
+  need smoke *skipped*, and ce05 is a static push scan. `|| true`, `continue-on-error` or a
+  shell without pipefail on the smoke step would all survive. (`smoke` has e10 for this risk.)
+- **Confidence:** proven
+- **Severity hint:** major
+
+#### F40
+- **Target:** harness safety: the kubeconfig context against the owned container (T1)
+- **Claim challenged:** the harness only ever touches the cluster it created
+- **Evidence:** `owned()` checks the Docker container, while `kc` uses the `k3d-knock` context
+  from the user's kubeconfig, and nothing binds the two. `apply --prune --all` and ce03's
+  `delete -f k8s/` go through that context.
+- **Breaking case:** two Docker runtimes, each with a `knock` cluster, and a kubeconfig
+  pointing at the other one → prune and delete act on a cluster the harness didn't create
+- **Confidence:** unproven
+- **Would be settled by:** two Docker contexts with crossed kubeconfigs, then c03
+- **Severity hint:** major
+
+#### F41
+- **Target:** the CI pin check's claims (P1)
+- **Claim challenged:** the pins are "one sha-<7> tag that main published"
+- **Evidence:** only the tag's shape is checked. The repository isn't checked (any registry
+  and name pass), and publication only surfaces later as ImagePullBackOff. The comment and the
+  error text claim more than that.
+- **Confidence:** proven
+- **Severity hint:** major
+
+#### F42
+- **Target:** the failure dump on a stalled create (P2)
+- **Evidence:** the dump is kubectl-only. A create killed by the step timeout likely leaves no
+  kubeconfig, so the dump exits at its first line with no docker or k3d state.
+- **Confidence:** unproven
+- **Would be settled by:** a stalled create (an unreachable `--image`) and reading the dump
+- **Severity hint:** major
+
+#### F43
+- **Target:** the dump's namespace scope (P3)
+- **Evidence:** only `get pods` is all-namespaces. Events, describe and logs are default-only,
+  so no Traefik, svclb or CoreDNS logs or events.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F44
+- **Target:** the job timeout against the sum of the step bounds (P4)
+- **Evidence:** the bounded steps reach about 14 min, plus unbounded downloads, against a
+  15-min job timeout. A job timeout is a cancel, so there's no dump.
+- **Confidence:** proven (arithmetic)
+- **Severity hint:** minor
+
+#### F45
+- **Target:** the jq image filter (P5)
+- **Evidence:** `..|objects|select(has("image"))` matches image volumes (objects) and any map
+  with an `image` key (labels, data), which gives false reds or misses the volume's reference.
+- **Confidence:** proven by reading (not in k8s/ today)
+- **Severity hint:** minor
+
+#### F46
+- **Target:** empty or missing images in the pin check (P6)
+- **Evidence:** `image: ""` yields a misleading "not \nsha-…" message, no images gives an empty
+  "disagree", and a container without `image` passes the check and fails later at apply.
+- **Confidence:** proven / unproven (the missing-key case)
+- **Severity hint:** minor
+
+#### F47
+- **Target:** a green pin check is silent (P7)
+- **Evidence:** the step prints nothing on success, so a run can't show which images it read.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F48
+- **Target:** the pin step is skipped when create fails (P8)
+- **Evidence:** the check needs the API server. A create flake reports the pin step as
+  skipped, not failure.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F49
+- **Target:** the release-2 contents (D2, D5)
+- **Evidence:** "release 2 = a PR that moves the pin" doesn't say release 2 must hold only the
+  pin bump plus the `k8s/`/CI changes that need the new images. Anything else merged into
+  `dev` meanwhile ships with release 2 but isn't what `k8s/` runs. Changes that need the new
+  images block release 1 if put there.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F50
+- **Target:** the level tag's images against the cluster's (D3)
+- **Evidence:** promote retags release 2's `sha-<M2>`, while `k8s/` at the tag runs
+  `sha-<M1>`: same code, different `version`. Undocumented.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F51
+- **Target:** the PLAN example for opt-in checks (D4)
+- **Evidence:** `EXPECT_NODE_PREFIX` is given as "a check only newer images can pass", but
+  level 1's images already pass it, and `cluster` sets it now.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F52
+- **Target:** the PLAN CoreDNS "30 s" claim (D6)
+- **Evidence:** `cache 30` is a cap. The kubernetes plugin's denial TTL is likely 5 s, so the
+  number is unverified.
+- **Confidence:** unproven
+- **Would be settled by:** the coredns ConfigMap and `dig` on the SOA TTL with the Service absent
+- **Severity hint:** minor
+
+#### F53
+- **Target:** the PLAN claim "the normal path never sees it" (D7)
+- **Evidence:** `frontend.yaml` applies before `knock-api.yaml`, so it's a race won by pod
+  start time. "Never" overclaims.
+- **Confidence:** unproven
+- **Severity hint:** minor
+
+#### F54
+- **Target:** the perl bump with an unset or malformed NEW (D8)
+- **Evidence:** writes `knock-knock-go:` or a non-sha tag silently. CI catches it at PR time;
+  locally it fails as InvalidImageName.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F55
+- **Target:** third-party images in k8s/ (D9)
+- **Evidence:** the pin check fails on any non-knock image (for example a level 12 client pod).
+  Undocumented.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F56
+- **Target:** PLAN describes the old pin check and dump (D10)
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F57
+- **Target:** "a level that changes app code" (D11)
+- **Evidence:** the trigger is anything baked into an image: backends, frontend incl.
+  nginx.conf, the Dockerfiles.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F58
+- **Target:** README Requirements don't list perl (D12)
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F59
+- **Target:** ce05 scan bypasses (T3)
+- **Evidence:**
+  - `secrets['X']` and `toJSON(secrets)`;
+  - `docker  login` or `docker --config d login`;
+  - `docker image push`;
+  - `crane`/`skopeo`/`oras`/`podman`;
+  - `--output type=registry`;
+  - `push: true` on another action.
+- **Confidence:** proven
+- **Severity hint:** major
+
+#### F60
+- **Target:** c07 node and port checks are presence-only (T4)
+- **Breaking case:** `--agents 3`, `--servers 3`, or `-p 8080:80@server:0` → c07 green
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F61
+- **Target:** c07 binds to the head's k8s/, while the run used the merge ref (T5)
+- **Breaking case:** `dev` changed a `k8s/` file the PR didn't touch → c07 still green
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F62
+- **Target:** ce03's failure trap ignores KEEP_CLUSTER (T6)
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F63
+- **Target:** the ce04 CORS grep scope (T7)
+- **Evidence:** `|| true` swallows grep exit 2 (a missing `backends/`), and the scope leaves
+  out the frontend Dockerfile, other nginx confs and `k8s/`. The pattern is substring-only,
+  and vendored dirs can give false reds.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F64
+- **Target:** ce04 ignores ConfigMap/Secret/projected volumes (T8)
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F65
+- **Target:** wait_ready's `for d in $(kc get …)` (T9)
+- **Evidence:** a failing `kc get` gives zero iterations, and only the ingress probe gates.
+- **Confidence:** proven (path)
+- **Severity hint:** minor
+
+#### F66
+- **Target:** ce01/ce02 binding and step-read robustness (T10)
+- **Evidence:** a gh error exits without a `FAIL:` line, `grep -qx ""` matches an empty
+  `heads`, and BLOCKED is read once after 5 s (UNKNOWN possible) and isn't attributed to
+  `cluster`.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F67
+- **Target:** c01's arch check uses the shell's arch, not Docker's (T11)
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F68
+- **Target:** ce03's transient read; working tree vs committed `k8s/` (T12)
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F69
+- **Target:** ce04 truthiness: `[]` or `0` give false reds (T13)
+- **Confidence:** proven
+- **Severity hint:** minor
+
+#### F70
+- **Target:** the stalled-create comment against the job-level dump (P2/P4 interplay, folded
+  into F42/F44)
+- **Evidence:** a duplicate entry kept so ids stay contiguous.
+- **Confidence:** proven
+- **Severity hint:** minor
+
+### Surfaces
+- **Swept (P):** step names match exactly; pipefail failure in the image capture; List vs
+  single output; the dry-run is read-only; empty k8s/ fails before apply; the regex and sed
+  on port/digest/uppercase; the `GITHUB_ENV` write; the dump can't fail the job; `.json`,
+  `.yml` and flow-style files are read like the apply reads them. All held.
+- **Swept (D):** the README smoke command and wait; the perl quoting (zsh/bash,
+  macOS/Linux); release 2's `sha-<7>` is published; the promote first-parent check; level 2
+  needs one release; no stale `*.yaml`-only claim; the PLAN 01 bullet; backoff and nginx
+  exit. All held.
+- **Swept (T):** c02's rotation arithmetic and mutations; `x=$(cmd) && fail` under `set -e`;
+  the ce03 trap preserving status; the UID check; the DNS sleep; ce01's cancel-vs-failure
+  steps; ce02 mutations; pipeline failure propagation; c03 ports; c04 nulls; run.sh globs;
+  `.cluster-owned` gitignored and per worktree; `--prune --all` inside an owned cluster. All
+  held.
+- **Unattacked:** whether a step `timeout-minutes` concludes `failure` or `cancelled`;
+  `events --sort-by` with null timestamps; 08 and c06 (outside the diff); k3d log format
+  without a TTY (seen in CI: it matches); bash 3.2 for the new code.
+
+### Verdicts
+Iteration 2. Closed this iteration: 26 slices (F1–F3, F7–F35 except F4–F6, which are
+implemented and wait for the ACT run). Carrying 8 refuted. 33 new findings adjudicated here
+on the delegates' evidence; no verification delegates.
+
+#### F38 — CONFIRMED minor
+- **Reason:** It's real and was observed live, but not on the documented path: nothing in
+  level 2 recreates the Service under a running frontend. It's the resolve-once lesson in
+  Kubernetes form, and it belongs in the docs.
+
+#### F39 — CONFIRMED major
+- **Reason:** The core gate (red smoke ⇒ red `cluster`) has no test, while `smoke` has e10
+  for the same risk. A `|| true` would ship unnoticed.
+
+#### F40 — CONFIRMED major
+- **Reason:** The code path is proven: `kc` isn't bound to the owned container. The scenario
+  is rare, but it would breach the harness's one safety rule with destructive commands, and
+  the fix (a private kubeconfig from k3d) is cheap.
+
+#### F41 — CONFIRMED minor
+- **Reason:** The repository isn't checked, and the text overclaims "published". Publication
+  is deliberately left to the pull (ce01's path), so the fix is a repository check plus
+  honest wording.
+
+#### F42 — CONFIRMED minor
+- **Reason:** The dump has no docker/k3d state for create-time failures (proven gap). Whether
+  the kubeconfig is absent is unproven, but the docker/k3d state is what such a failure needs
+  either way.
+
+#### F43 — CONFIRMED minor
+- **Reason:** Events, describe and logs are default-namespace only.
+
+#### F44 — CONFIRMED minor
+- **Reason:** The step bounds can sum to more than the job timeout, and a cancel skips the
+  dump.
+
+#### F45 — CONFIRMED minor
+- **Reason:** The filter isn't container-precise. Not reachable with today's `k8s/`, but
+  cheap.
+
+#### F46 — CONFIRMED minor
+- **Reason:** Empty or missing images give misleading messages.
+
+#### F47 — CONFIRMED minor
+- **Reason:** A silent pass leaves no evidence of what was read.
+
+#### F48 — REFUTED
+- **Reason:** A create failure is reported by its own step. ce02 on a flake goes falsely red,
+  never falsely green.
+- **Reopens only if:** a create flake is shown making a pin test pass.
+
+#### F49 — CONFIRMED minor
+- **Reason:** What release 2 must contain is unstated.
+
+#### F50 — CONFIRMED minor
+- **Reason:** It's undocumented that the level tag's image reports a different `version` from
+  the replayed cluster.
+
+#### F51 — CONFIRMED minor
+- **Reason:** The example is wrong for level 2 itself.
+
+#### F52 — CONFIRMED minor
+- **Reason:** An unverified specific number. The fix is to state the mechanism without it.
+
+#### F53 — CONFIRMED minor
+- **Reason:** "Never" overclaims a race. Wording.
+
+#### F54 — REFUTED
+- **Reason:** CI's pin check rejects both at PR time with a clear message, and a local apply
+  fails loudly.
+- **Reopens only if:** a malformed bump passes `cluster`.
+
+#### F55 — REFUTED
+- **Reason:** `k8s/` holds only the five images by design (ce04/c05). Admitting another image
+  is a future level's design decision (12).
+- **Reopens only if:** level 12's design adds a non-knock image to `k8s/`.
+
+#### F56 — CONFIRMED minor
+- **Reason:** PLAN's description of the pin check and the dump is stale.
+
+#### F57 — CONFIRMED minor
+- **Reason:** "App code" under-describes what's baked into images.
+
+#### F58 — CONFIRMED minor
+- **Reason:** perl is now a documented requirement.
+
+#### F59 — CONFIRMED minor
+- **Reason:** The scan has named bypasses. It's a static scan, inherently incomplete. Widening
+  it to forbid any `secrets`, `login` or `push` mention in `cluster` closes these cheaply, and
+  F39's test covers the gate itself.
+
+#### F60 — CONFIRMED minor
+- **Reason:** Presence isn't equality. Exact node lines and the loadbalancer port-mapping line
+  are cheap.
+
+#### F61 — CONFIRMED minor
+- **Reason:** The merge ref can differ from the head. Binding to the images the run itself
+  printed (F47) closes the pin half. Other `k8s/` fields remain a residual, noted.
+
+#### F62 — CONFIRMED minor
+- **Reason:** The trap contradicts the KEEP_CLUSTER promise.
+
+#### F63 — CONFIRMED minor
+- **Reason:** A missing `backends/` passes vacuously, and the scope is narrow.
+
+#### F64 — CONFIRMED minor
+- **Reason:** Config volumes aren't checked.
+
+#### F65 — CONFIRMED minor
+- **Reason:** An empty list skips the rollout wait silently.
+
+#### F66 — CONFIRMED minor
+- **Reason:** An empty `heads` matches. BLOCKED is read once.
+
+#### F67 — CONFIRMED minor
+- **Reason:** Rosetta or a remote engine skips the arch check.
+
+#### F68 — REFUTED
+- **Reason:** A dirty `k8s/` is operator misuse, the same class as level 1's F72 (accepted).
+  The release check runs on a clean tree, and the transient read only gives false reds.
+- **Reopens only if:** a release check is run on a dirty tree.
+
+#### F69 — CONFIRMED minor
+- **Reason:** Empty arrays or zeros would false-red ce04.
+
+#### F70 — REFUTED
+- **Reason:** A duplicate of F42/F44.
+- **Reopens only if:** never on its own.
+
+### Remediation slices
+- [ ] [major] F39 — A new ACTS test (ce06): a throwaway PR into `dev` whose `k8s/` breaks the
+      Downward API for one backend (NODE_NAME a literal `local`) turns `cluster` red: the
+      smoke step concludes `failure`, its output has `FAIL: … node … local`, and the PR is
+      BLOCKED. `smoke` stays green. ce05 also refuses `continue-on-error` and `|| true` in
+      `cluster`, and a non-bash shell.
+- [ ] [major] F40 — Every harness kubectl call uses a kubeconfig written by
+      `k3d kubeconfig get knock` for the owned cluster, never the user's kubeconfig.
+- [ ] [minor] F41 — The pin check fails unless every image is
+      `ghcr.io/izentenosmith/knock-knock-<name>:<tag>`, and its text no longer claims to
+      verify publication.
+- [ ] [minor] F42 — On failure, the dump also shows `docker ps -a` and `k3d node list`.
+- [ ] [minor] F43 — On failure, events, describe and logs cover kube-system too (Traefik).
+- [ ] [minor] F44 — The job timeout exceeds the sum of its bounded steps plus the downloads,
+      and the downloads are bounded.
+- [ ] [minor] F45 — The pin check reads container images only (`containers`,
+      `initContainers`, `ephemeralContainers`).
+- [ ] [minor] F46 — An empty or missing image fails the pin check with a message saying so.
+- [ ] [minor] F47 — A passing pin check prints the images it read.
+- [ ] [minor] F61 — c07 requires the images the run printed to equal the tree's images.
+- [ ] [minor] F38 — PLAN's level 02 note says a recreated `knock-api` leaves a running
+      frontend on the old address until it restarts (`kubectl rollout restart
+      deployment/frontend`).
+- [ ] [minor] F49 — README/PLAN say release 2 holds only the pin bump plus the `k8s/`/CI
+      changes that need the new images, with nothing else merged into `dev` in between.
+- [ ] [minor] F50 — README/PLAN say the level tag's images report release 2's `sha-<7>` while
+      the replayed cluster reports release 1's.
+- [ ] [minor] F51 — PLAN's opt-in example is accurate for level 2.
+- [ ] [minor] F52 — PLAN states the DNS-caching mechanism without an unverified number.
+- [ ] [minor] F53 — PLAN says the single apply wins the race in practice, not "never".
+- [ ] [minor] F56 — PLAN describes the pin check and the dump as built.
+- [ ] [minor] F57 — The two-release trigger is "anything baked into an image".
+- [ ] [minor] F58 — README Requirements list perl.
+- [ ] [minor] F59 — ce05 fails if `cluster` mentions `secrets`, `login` or `push` at all.
+- [ ] [minor] F60 — c07 requires exactly the three expected `Creating node` lines and k3d's
+      "portmapping '8080:80' targets the loadbalancer" line.
+- [ ] [minor] F62 — ce03's failure trap keeps the cluster when KEEP_CLUSTER is set (and says
+      it's broken).
+- [ ] [minor] F63 — ce04's CORS check fails if a scanned directory is missing, and scans
+      `backends/`, `frontend/` and `k8s/` (excluding vendored and build directories).
+- [ ] [minor] F64 — ce04 refuses ConfigMap, Secret and projected volumes.
+- [ ] [minor] F65 — wait_ready fails if it finds no Deployments.
+- [ ] [minor] F66 — ce01/ce02 fail with a `FAIL:` line on empty bindings, and poll the merge
+      state until it's known.
+- [ ] [minor] F67 — c01's arch check uses Docker's architecture.
+- [ ] [minor] F69 — ce04's checks treat empty arrays and zeros as absent.
+
+### Verdict: NO-GO
+- **Reason:**
+  - Open: 2 confirmed majors (F39, F40) and 26 new confirmed minors. F4–F6 are implemented
+    but unobserved (the ACT run). 7 refuted this iteration, 0 INCONCLUSIVE.
+  - Iteration 2 of at most 3. Progress is monotonic: 26 slices closed.
+  - Carried smells: N1, N3, N5, N6, N7, N9, N10.
