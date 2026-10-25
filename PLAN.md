@@ -204,14 +204,40 @@ smoke test) can push.
 
 The smoke test is the project's only test, and it grows with each level.
 
-**02 — cluster.** `k3d cluster create knock --agents 2` (k3d ships Traefik as
-the ingress, plus servicelb and metrics-server, so we use what's built in).
-Four Deployments carry a shared label `pool: knock`, and **one** Service
-`knock-api` selects that label. The frontend gets its own Deployment and
-Service, and the Ingress routes `/` to it. The frontend's nginx still proxies
-to `knock-api:8080`, now the Service. `POD_NAME` / `NODE_NAME` come from the
-Downward API. CI gains a job that starts k3d in the runner and runs the same
-smoke test against the ingress.
+**02 — cluster.** `k3d cluster create knock --agents 2 -p "8080:80@loadbalancer"`
+(k3d ships Traefik as the ingress, plus servicelb and metrics-server, so we use
+what's built in). The port mapping puts the ingress on `localhost:8080`, compose's
+address, so the smoke test's default `URL` is unchanged; stop compose first.
+Then `kubectl apply -f k8s/` (plain YAML, the default namespace).
+- Four Deployments (`knock-go`, `knock-python`, `knock-rust`, `knock-ts`, one
+  replica each) carry a shared label `pool: knock`, and **one** Service
+  `knock-api` selects that label. The frontend gets its own Deployment and
+  Service, and the Ingress routes `/` to it. The frontend's nginx still proxies
+  to `knock-api:8080`, now the Service.
+- `POD_NAME` / `NODE_NAME` come from the Downward API. A knock can prove only
+  `node`: a pod's hostname is its name, so `pod` reads the same with or without
+  `POD_NAME`. The smoke test's opt-in `EXPECT_NODE_PREFIX=k3d-knock-` fails on any
+  answer whose `node` doesn't start with it (`local` means `NODE_NAME` isn't
+  wired, or the knock landed on compose).
+- **The manifests pin images that are already published.** All five reference one
+  `sha-<7>` that `main` published (no `latest`), the same string the backends
+  report as `version`. A commit can't pin its own `sha-<7>` (it's published only
+  after the merge), so until level 13 the pin moves by hand, in a PR into `dev`. A
+  level that changes app code therefore ships in two releases: the code, then the
+  pin bump.
+- There are no probes until level 4, so a pod counts as ready as soon as it
+  starts. Waiting belongs to the environment, never to the smoke test: every
+  Deployment `Available`, then the ingress answering a knock, then the strict
+  smoke test. If the frontend starts before the Service exists, nginx can't
+  resolve `knock-api` and exits; it restarts until the Service is there.
+- CI gains the job `cluster`, beside `smoke` and required on `dev` and `main`
+  like it. It installs a pinned k3d, creates the cluster with the same command,
+  applies `k8s/` as committed (it never builds), waits, and runs the same smoke
+  test through the ingress with `EXPECT_VERSION` = the pin and
+  `EXPECT_NODE_PREFIX=k3d-knock-`. Pins that disagree fail before anything is
+  applied. On failure it dumps the pods, their descriptions and logs. `publish`
+  still needs only `smoke`: `cluster` tests the already-published pin, not the
+  image about to be pushed.
 
 **03 — load balancing.** This is the core lesson.
 - A Service is **L4**: kube-proxy balances *connections*, not requests, and in
