@@ -1,0 +1,43 @@
+name: dry-run
+
+# Required on main: release-ready is green only when this PR's own dry run built all five images
+# for both platforms and checked every backend. It's a workflow of its own that runs only for
+# PRs into main (also when a PR's base is changed to main), so no other run ever produces a
+# release-ready check that could stand in for it, not even a skipped one.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+concurrency:
+  group: dry-run-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - id: version
+        run: echo "version=sha-${GITHUB_SHA::7}" >>"$GITHUB_OUTPUT"
+
+  dry-run:
+    needs: version
+    uses: ./.github/workflows/publish.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      push: false
+
+  release-ready:
+    needs: dry-run
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env: { RESULT: "${{ needs.dry-run.result }}" }
+        run: '[ "$RESULT" = success ] || { echo "the dry run did not pass: $RESULT"; exit 1; }'

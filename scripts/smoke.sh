@@ -36,6 +36,7 @@ if [ -n "${EXPECT_VERSION+set}" ]; then
 fi
 
 echo "$N knocks on $URL"
+[ -z "${EXPECT_VERSION+set}" ] || echo "version $EXPECT_VERSION in every answer"
 jq -rs 'group_by(.lang)[] | "  \(.[0].lang)\t\(length)"' "$answers"
 echo "by pod"
 jq -rs 'group_by(.pod)[] | "  \(.[0].lang)\t\(.[0].pod)\t\(length)"' "$answers"

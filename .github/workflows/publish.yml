@@ -1,7 +1,8 @@
 name: publish
 
-# Called by ci.yml once the smoke test has passed, never triggered on its own. The caller
-# decides the token's permissions: the dry run gets no packages: write.
+# Called by ci.yml once the smoke test has passed (publish, promote) and by dry-run.yml (dry
+# run), never triggered on its own. The caller decides the token's permissions: the dry run
+# gets no packages: write.
 #   push: false           dry run (PRs into main): build both platforms, check, push nothing
 #   push: true            publish (main): push <image>:<version> unless it already exists
 #   level_tag: level-NN-… promote (level tags): give <image>:<version> the level tag, same digest
@@ -23,6 +24,7 @@ jobs:
   build:
     if: inputs.level_tag == ''
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     strategy:
       fail-fast: false # one failed service must not cancel the others; a re-run finishes the rest
       matrix:
@@ -55,42 +57,31 @@ jobs:
             echo "skip=true" >>"$GITHUB_OUTPUT"
           fi
 
+      # A registry on the runner: the image is built once into it, checked from it, and only
+      # then copied to GHCR, so what ships is byte-for-byte what was checked.
+      - if: steps.guard.outputs.skip != 'true'
+        run: docker run -d -p 5000:5000 registry:2
       - if: steps.guard.outputs.skip != 'true'
         uses: docker/setup-qemu-action@v4
       - if: steps.guard.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: network=host
+          buildkitd-config-inline: |
+            [registry."localhost:5000"]
+              http = true
 
-      # What ships is what was checked: each backend's amd64 image is built and started first,
-      # then the multi-platform build, with the same arguments, reuses its layers from the cache.
       - if: steps.guard.outputs.skip != 'true'
         env: { PUSH: "${{ inputs.push }}" }
         run: |
-          build=(docker buildx build "$CONTEXT" --build-arg VERSION="$VERSION")
-          if [ "$SERVICE" != frontend ]; then
-            "${build[@]}" --platform linux/amd64 --load --tag "check/$SERVICE"
-            scripts/check-image.sh "check/$SERVICE" "$SERVICE" "$VERSION"
-          fi
-          output=()
-          [ "$PUSH" = true ] && output=(--push)
-          "${build[@]}" \
-            --platform linux/amd64,linux/arm64 \
-            --label org.opencontainers.image.source="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
-            --label org.opencontainers.image.revision="$GITHUB_SHA" \
-            --label org.opencontainers.image.version="$VERSION" \
-            --provenance=false --sbom=false \
-            --tag "$IMAGE:$VERSION" \
-            "${output[@]}"
-          if [ "$PUSH" = true ]; then
-            digest=$(scripts/image-digest.sh "$IMAGE:$VERSION")
-            [ -n "$digest" ] || { echo "::error::pushed $IMAGE:$VERSION but can't read it back"; exit 1; }
-            echo "pushed $IMAGE:$VERSION @ $digest" | tee -a "$GITHUB_STEP_SUMMARY"
-          else
-            echo "dry run: built $IMAGE:$VERSION for linux/amd64 and linux/arm64, pushed nothing" | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+          push=()
+          [ "$PUSH" = true ] && push=(--push)
+          scripts/build-image.sh "$SERVICE" "$CONTEXT" "$IMAGE" "$VERSION" "$GITHUB_SHA" "${push[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
 
   promote:
     if: inputs.level_tag != ''
     runs-on: ubuntu-latest
+    timeout-minutes: 30 # longer than promote.sh's 20-minute wait for main's publish
     strategy:
       fail-fast: false
       matrix:
@@ -102,10 +93,12 @@ jobs:
       - uses: actions/checkout@v7
         with: { persist-credentials: false, fetch-depth: 0 }
 
-      # Only main publishes sha-<7>, so a level tag only makes sense on a commit main has.
+      # Only main's own commits (its first-parent line) are published as sha-<7>, so a level tag
+      # anywhere else, a dev or feature commit included, fails here instead of waiting.
       - run: |
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
-            || { echo "::error::$LEVEL_TAG is on ${GITHUB_SHA::7}, which isn't on main: tag main's merge commit"; exit 1; }
+          git rev-list --first-parent origin/main >main-commits
+          grep -qx "$GITHUB_SHA" main-commits \
+            || { echo "::error::$LEVEL_TAG is on ${GITHUB_SHA::7}, which isn't one of main's own commits: tag main's merge commit"; exit 1; }
 
       - env: { TOKEN: "${{ github.token }}" }
         run: echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
