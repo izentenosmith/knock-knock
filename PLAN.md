@@ -236,7 +236,10 @@ Then `kubectl apply -f k8s/` (plain YAML, the default namespace).
   starts. Waiting belongs to the environment, never to the smoke test: every
   Deployment `Available`, then the ingress answering a knock, then the strict
   smoke test. If the frontend starts before the Service exists, nginx can't
-  resolve `knock-api` and exits; it restarts until the Service is there.
+  resolve `knock-api` and exits; it restarts until the Service is there. That can
+  take minutes: the restarts back off (up to 5 min), and CoreDNS caches the "no
+  such host" answer for 30 s. A single `kubectl apply -f k8s/` creates the
+  Service before nginx starts, so the normal path never sees it.
 - CI gains the job `cluster`, beside `smoke` and required on `dev` and `main`
   like it. It installs a pinned k3d, creates the cluster with the same command,
   applies `k8s/` as committed (it never builds), waits, and runs the same smoke
