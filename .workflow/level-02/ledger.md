@@ -1493,3 +1493,37 @@ Tree `a099b64` (= `dev` @ `de73a5c`'s content), `ACT=1 .workflow/acceptance/run.
     - The overlapping-`main`-pair half can't be fresh until two `main` commits carry level 2's
       workflows. It was replayed from level 1's pair (`HISTORY=1`). Justification:
       `ci.yml`'s concurrency block is unchanged since `04f74b3`.
+
+### Release check (released tree), 2026-10-29
+- **The release.**
+  - #44 (this ledger's pre-main entry) → `dev` (`dedf4ec`). Then release PR #45 `dev` → `main`
+    with all four required checks green: smoke, cluster, only-dev-to-main, release-ready (dry
+    run 40909016027).
+  - Merged as `ef37ffe` (merge commit, parents `04f74b3` and `dedf4ec`).
+  - `main`'s run 40910931310 is green: smoke, cluster, and `sha-ef37ffe` published for all five.
+  - The released tree equals the tested tree (`git diff HEAD origin/main` is empty).
+- **Re-proven fresh after the merge:**
+  - 04 (against #45);
+  - 05 and 03 (`main`'s run);
+  - 06 (anonymous pull of `sha-ef37ffe`);
+  - e03 (`ACT=1`: re-ran 40910931310, all five skipped, digests unchanged).
+- **Full suite against `ef37ffe`'s tree (replay of the live runs):** 40/41 green.
+  - The level 1 ACTS tests e01, e08 and e10–e13 replay the live `ACT=1` runs of 2026-10-25,
+    which ran the same workflows and scripts (now in `observed.env`).
+  - The level 2 tests are all green, and the local cluster tests were rebuilt from scratch.
+- **e09 is the exception, by design.**
+  - Its feature half is fresh (40233988723 cancelled by 40234013819).
+  - No `main` or tag run has ever been cancelled.
+  - The overlapping-`main`-pair half needs two `main` commits on level 2's workflows, and only
+    one exists. It's replayed from level 1's pair; the concurrency block is unchanged since
+    `04f74b3`.
+  - It becomes fresh with the next release to `main`.
+- **Found while running it (level 1 harness, minor):**
+  - l1–l3 seed from local `knock-knock-<svc>:latest` images, but `compose.yaml` has no `name:`,
+    so compose names images after the checkout directory. In a worktree
+    (`level-02-cluster-setup-1d316a-<svc>`) they fail unless the images already exist.
+  - Passed with `COMPOSE_PROJECT_NAME=knock-knock docker compose build` first.
+  - The follow-up is a level 1 harness fix: the l-tests build with
+    `-p knock-knock` / `COMPOSE_PROJECT_NAME`.
+- **Tag:** `level-02-cluster` on `ef37ffe` is ready (it's one of `main`'s first-parent merge
+  commits and its run is green). It waits for the owner's confirmation.
