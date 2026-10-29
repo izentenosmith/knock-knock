@@ -1,0 +1,24 @@
+# One of four backend Deployments. The pool: knock label puts its pod behind the one Service,
+# knock-api; app: knock-ts is only this Deployment's own selector.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knock-ts
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: knock-ts }
+  template:
+    metadata:
+      labels: { app: knock-ts, pool: knock }
+    spec:
+      containers:
+        - name: ts
+          image: ghcr.io/izentenosmith/knock-knock-ts:sha-04f74b3
+          ports:
+            - containerPort: 8080
+          env: # the Downward API: which pod answered, and on which node
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }

@@ -1,0 +1,11 @@
+# One Service over four Deployments: it selects every pod with pool: knock, whatever language.
+# The frontend's nginx proxies /api/ to knock-api:8080, so this name is part of the contract.
+apiVersion: v1
+kind: Service
+metadata:
+  name: knock-api
+spec:
+  selector: { pool: knock }
+  ports:
+    - port: 8080
+      targetPort: 8080
