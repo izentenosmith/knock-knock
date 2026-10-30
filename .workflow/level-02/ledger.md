@@ -1527,3 +1527,14 @@ Tree `a099b64` (= `dev` @ `de73a5c`'s content), `ACT=1 .workflow/acceptance/run.
     `-p knock-knock` / `COMPOSE_PROJECT_NAME`.
 - **Tag:** `level-02-cluster` on `ef37ffe` is ready (it's one of `main`'s first-parent merge
   commits and its run is green). It waits for the owner's confirmation.
+
+### Level tag, 2026-10-30
+- The owner confirmed. Annotated `level-02-cluster` pushed on `ef37ffe` (origin/main's head, a
+  first-parent merge commit).
+- Tag run 41062584922 is green: smoke, cluster, and five `publish / promote` jobs. `publish /
+  build` was skipped, so nothing was rebuilt.
+- 07 (`LEVEL_TAG=level-02-cluster`) passes. Every service's `:level-02-cluster` digest equals
+  its `:sha-ef37ffe` digest:
+  go `5faa385d…`, python `57ad6068…`, rust `cfb307aa…`, ts `b94ca87b…`, frontend `4086a171…`.
+  These are the digests e03 recorded before its re-run.
+- Minor (harness): 07's pass line still says "level-01 release" whatever `LEVEL_TAG` is.
